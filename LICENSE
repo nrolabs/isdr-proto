@@ -1,0 +1,21 @@
+isdr-proto — iSDR driver wire protocol
+Copyright (C) 2026 Isak Ruas <isakruas@gmail.com>. All rights reserved.
+
+This library is DUAL-LICENSED:
+
+1. GPL grant (iSDR Drivers). As distributed as part of the "iSDR Drivers"
+   application (the GPL driver host for the iSDR app), this library is
+   licensed under the GNU General Public License, version 2 or (at your
+   option) any later version. A copy of the GPL accompanies that
+   distribution. This grant exists so the combined iSDR Drivers work can be
+   distributed in full compliance with the licenses of the drivers it
+   contains.
+
+2. All other uses. Any use outside the scope of grant (1) — including
+   linking this library, or a modified version of it, into any other
+   application — requires a separate written license from the copyright
+   holder. No such rights are granted by default.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
