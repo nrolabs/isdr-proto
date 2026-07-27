@@ -58,6 +58,22 @@ object DriverProto {
      */
     const val FEAT_IQ_FORMAT = 8
 
+    /**
+     * Host can ask for a NARROWBAND stream: IQ shifted to a chosen centre and
+     * decimated to a chosen width, plus a quantised display spectrum
+     * (CMD_SET_NARROWBAND).
+     *
+     * This is what makes remote operation possible on mobile data. The full
+     * stream is ~160 Mbit/s in both directions combined; a 12 kHz window in
+     * s16 is under 900 kbit/s, and the client keeps doing ALL of its own
+     * demodulation, filtering and transmit processing — nothing moves except
+     * the channelisation, which the client would have done anyway.
+     *
+     * The cost is that retuning OUTSIDE the window becomes a round trip
+     * instead of a local operation. Inside it, everything stays instant.
+     */
+    const val FEAT_NARROWBAND = 16
+
     // ---- IQ wire formats (FEAT_IQ_FORMAT) ----
     //
     // Samples stay interleaved i0,q0,i1,q1,... and normalised to [-1,1) on
@@ -126,6 +142,7 @@ object DriverProto {
     const val CMD_TX_IQ = 0x24                 // f32[] interleaved 48 kSps IQ
     const val CMD_SET_RECEIVER_COUNT = 0x28    // i32 n
     const val CMD_SET_IQ_FORMAT = 0x29         // i32 IQ_FORMAT_*
+    const val CMD_SET_NARROWBAND = 0x2A        // i32 widthHz (0 = off), i64 centerHz
     const val CMD_SET_ACTIVE_RECEIVER = 0x29   // i32 index
     const val CMD_SET_FREQUENCY2 = 0x2A        // i64 hz
     // Generalized per-receiver NCO frequency (index 0..N-1). Extensible to any
@@ -181,6 +198,14 @@ object DriverProto {
     // EV_DATA of the same flush, covering exactly the same sample span, so a
     // consumer pairs them with zero added latency and can never stall
     // waiting for a block that is not coming.
+    /**
+     * Narrowband window actually in force: i32 widthHz, i64 centerHz,
+     * i32 decimation. Sent whenever it changes, so the client knows which
+     * span it may retune inside without a round trip — guessing would let it
+     * tune to a frequency the window does not contain and hear silence.
+     */
+    const val EV_NARROWBAND = 0x8A
+
     const val EV_DATA_RX = 0x89                // i32 rx, i32 nIq, f32[nIq] [, i32 seq (FEAT_SEQ_TAG)]
 
     // EV_TELEMETRY flag bits (u16)
