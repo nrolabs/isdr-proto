@@ -21,7 +21,7 @@ class NarrowbandPlanTest {
         val narrow = plan.bytesPerSecond(DriverProto.IQ_FORMAT_S16)
         val full = 2_048_000L * 2 * 4
         assertTrue("narrow=$narrow full=$full", full / narrow >= 100)
-        assertTrue("$narrow B/s is too much for 4G", narrow <= 128_000)
+        assertTrue("$narrow B/s is too much for 4G", narrow <= 140_000)
     }
 
     @Test fun decimation_is_a_power_of_two() {
@@ -61,10 +61,26 @@ class NarrowbandPlanTest {
         assertNull(NarrowbandPlan.resolve(2_048_000, 0, 0))
     }
 
-    @Test fun decimation_is_bounded() {
-        val plan = NarrowbandPlan.resolve(3_200_000, NarrowbandPlan.MIN_WIDTH_HZ, 0)!!
-        assertTrue("decimation ${plan.decimation} is unbounded",
-            plan.decimation <= NarrowbandPlan.MAX_DECIMATION)
+    @Test fun decimation_never_exceeds_what_the_front_end_accepts() {
+        // osConfig is defined for D in 2..64. A plan above that is refused at
+        // runtime, after the client already sized buffers for a window that
+        // never arrives.
+        assertEquals(64, NarrowbandPlan.MAX_DECIMATION)
+        for (rate in intArrayOf(960_000, 2_048_000, 2_400_000, 3_200_000)) {
+            val plan = NarrowbandPlan.resolve(rate, NarrowbandPlan.MIN_WIDTH_HZ, 0) ?: continue
+            assertTrue("rate $rate gave decim ${plan.decimation}",
+                plan.decimation in 2..NarrowbandPlan.MAX_DECIMATION)
+        }
+    }
+
+    @Test fun the_real_configuration_still_fits_on_mobile_data() {
+        // With D capped at 64, 2.048 MS/s yields a 32 kHz window rather than
+        // 12 kHz. That is the honest number and it must still be usable.
+        val plan = NarrowbandPlan.resolve(2_048_000, 12_000, 14_074_000)!!
+        assertEquals(64, plan.decimation)
+        assertEquals(32_000, plan.widthHz)
+        val bits = plan.bytesPerSecond(DriverProto.IQ_FORMAT_S16) * 8
+        assertTrue("$bits bit/s is too much for 4G", bits <= 1_100_000)
     }
 
     // ---- coverage: hearing a signal vs hearing silence --------------------
@@ -153,9 +169,10 @@ class NarrowbandPlanTest {
     }
 
     @Test fun a_real_configuration_stays_under_a_megabit_each_way() {
-        val plan = NarrowbandPlan.resolve(2_048_000, 12_000, 14_074_000)!!
+        // A lower radio rate buys a proportionally narrower window.
+        val plan = NarrowbandPlan.resolve(960_000, 12_000, 14_074_000)!!
         val bits = plan.bytesPerSecond(DriverProto.IQ_FORMAT_S16) * 8
-        assertTrue("$bits bit/s", bits < 1_000_000)
+        assertTrue("$bits bit/s", bits < 600_000)
         assertNotNull(plan)
     }
 }

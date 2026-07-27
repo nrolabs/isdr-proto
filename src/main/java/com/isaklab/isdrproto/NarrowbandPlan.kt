@@ -77,8 +77,15 @@ data class NarrowbandPlan(
             return NarrowbandPlan(decim, width, centerHz)
         }
 
-        /** Guard rail: past this the filter cascade stops being sane. */
-        const val MAX_DECIMATION = 512
+        /**
+         * Hard ceiling from the front end itself: the overlap-save geometry
+         * is defined for D in 2..64 (N = 4800 must stay divisible by D and
+         * the anti-alias attenuation must clear 100 dB). Promising more here
+         * would produce a plan the DSP refuses at runtime, and the client
+         * would already have sized its buffers for a window that never
+         * arrives.
+         */
+        const val MAX_DECIMATION = 64
 
         /**
          * Normalised phase increment that shifts [centerHz] to DC, for
