@@ -42,6 +42,58 @@ object DriverProto {
      */
     const val FEAT_SEQ_TAG = 4
 
+    /**
+     * Host can send IQ in a NARROWER wire format than float32
+     * (CMD_SET_IQ_FORMAT). The sample count in EV_DATA / EV_DATA_RX is
+     * unchanged; only the bytes per sample change.
+     *
+     * float32 was chosen so one format could carry every radio, from the
+     * RTL's 8 bits to the HPSDR boards' 24. That is right for the DSP and
+     * wrong for the wire: an 8-bit dongle ships 4 bytes to carry 1 byte of
+     * information, and at 2.048 MS/s that is 131 Mbit/s instead of 33 —
+     * the difference between a link that works over mobile data and one
+     * that does not.
+     *
+     * Additive: a host that never sends CMD_SET_IQ_FORMAT keeps float32.
+     */
+    const val FEAT_IQ_FORMAT = 8
+
+    // ---- IQ wire formats (FEAT_IQ_FORMAT) ----
+    //
+    // Samples stay interleaved i0,q0,i1,q1,... and normalised to [-1,1) on
+    // both sides; only the transport encoding narrows. Quantisation is a
+    // plain scale-and-round, so a format at or above the radio's native
+    // depth is LOSSLESS — the driver is undoing an expansion it performed
+    // itself, not discarding signal.
+
+    /** 4 bytes/sample. The default, and what a host gets if it stays silent. */
+    const val IQ_FORMAT_F32 = 0
+
+    /**
+     * 2 bytes/sample, signed 16-bit little-endian. ~96 dB of range: lossless
+     * for 8- and 16-bit front ends, and transparent in practice for the
+     * 24-bit HPSDR boards outside deliberate wide-dynamic-range work.
+     */
+    const val IQ_FORMAT_S16 = 1
+
+    /**
+     * 1 byte/sample, signed 8-bit. LOSSLESS for RTL-SDR and HackRF, whose
+     * ADCs are 8-bit; destructive on anything deeper, so a host must only
+     * request it for a radio it knows is 8-bit.
+     */
+    const val IQ_FORMAT_S8 = 2
+
+    /** Bytes one sample occupies on the wire in [format]. */
+    fun iqSampleBytes(format: Int): Int = when (format) {
+        IQ_FORMAT_S16 -> 2
+        IQ_FORMAT_S8 -> 1
+        else -> 4
+    }
+
+    /** True when [format] is one this build understands. */
+    fun isKnownIqFormat(format: Int): Boolean =
+        format == IQ_FORMAT_F32 || format == IQ_FORMAT_S16 || format == IQ_FORMAT_S8
+
     /** Loopback TCP port the driver service listens on. */
     const val PORT = 45733
 
@@ -73,6 +125,7 @@ object DriverProto {
     const val CMD_SET_PA_ENABLED = 0x23        // u8 bool
     const val CMD_TX_IQ = 0x24                 // f32[] interleaved 48 kSps IQ
     const val CMD_SET_RECEIVER_COUNT = 0x28    // i32 n
+    const val CMD_SET_IQ_FORMAT = 0x29         // i32 IQ_FORMAT_*
     const val CMD_SET_ACTIVE_RECEIVER = 0x29   // i32 index
     const val CMD_SET_FREQUENCY2 = 0x2A        // i64 hz
     // Generalized per-receiver NCO frequency (index 0..N-1). Extensible to any
