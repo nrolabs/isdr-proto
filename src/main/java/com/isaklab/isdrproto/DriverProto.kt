@@ -143,6 +143,23 @@ object DriverProto {
     const val CMD_SET_RECEIVER_COUNT = 0x28    // i32 n
     const val CMD_SET_IQ_FORMAT = 0x29         // i32 IQ_FORMAT_*
     const val CMD_SET_NARROWBAND = 0x2A        // i32 widthHz (0 = off), i64 centerHz
+
+    /**
+     * Transmit IQ at a REDUCED rate: i32 rateHz, then s16 interleaved IQ.
+     *
+     * CMD_TX_IQ carries 48 kSps float32 — 3.07 Mbit/s upstream to convey
+     * voice that occupies 3 kHz. The station interpolates back to the
+     * driver's 48 kSps, so the radio and the transmit chain see no change;
+     * only the link narrows.
+     *
+     * The rate is carried per frame rather than negotiated once: transmit
+     * starts and stops, and a rate agreed at connect time would be wrong
+     * after any change to the audio path.
+     */
+    const val CMD_TX_IQ_NARROW = 0x2B          // i32 rateHz, s16[] interleaved IQ
+
+    /** Rate CMD_TX_IQ is defined at; the narrow form is restored to it. */
+    const val TX_RATE_HZ = 48_000
     const val CMD_SET_ACTIVE_RECEIVER = 0x29   // i32 index
     const val CMD_SET_FREQUENCY2 = 0x2A        // i64 hz
     // Generalized per-receiver NCO frequency (index 0..N-1). Extensible to any
