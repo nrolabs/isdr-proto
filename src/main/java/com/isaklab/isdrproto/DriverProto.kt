@@ -181,7 +181,7 @@ object DriverProto {
     const val CMD_SET_PA_ENABLED = 0x23        // u8 bool
     const val CMD_TX_IQ = 0x24                 // f32[] interleaved 48 kSps IQ
     const val CMD_SET_RECEIVER_COUNT = 0x28    // i32 n
-    const val CMD_SET_NARROWBAND = 0x2A        // i32 widthHz (0 = off), i64 centerHz
+    const val CMD_SET_NARROWBAND = 0x3A        // i32 widthHz (0 = off), i64 centerHz
 
     /**
      * Transmit IQ at a REDUCED rate: i32 rateHz, then s16 interleaved IQ.
@@ -195,7 +195,7 @@ object DriverProto {
      * starts and stops, and a rate agreed at connect time would be wrong
      * after any change to the audio path.
      */
-    const val CMD_TX_IQ_NARROW = 0x2B          // i32 rateHz, s16[] interleaved IQ
+    const val CMD_TX_IQ_NARROW = 0x3C          // i32 rateHz, s16[] interleaved IQ
 
     /** Rate CMD_TX_IQ is defined at; the narrow form is restored to it. */
     const val TX_RATE_HZ = 48_000
@@ -260,7 +260,7 @@ object DriverProto {
      * span it may retune inside without a round trip — guessing would let it
      * tune to a frequency the window does not contain and hear silence.
      */
-    const val EV_NARROWBAND = 0x8A
+    const val EV_NARROWBAND = 0x8C
 
     const val EV_DATA_RX = 0x89                // i32 rx, i32 nIq, iq[nIq] [, i32 seq (FEAT_SEQ_TAG)]
 
