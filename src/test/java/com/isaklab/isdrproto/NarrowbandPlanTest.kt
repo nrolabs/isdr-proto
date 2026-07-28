@@ -24,14 +24,45 @@ class NarrowbandPlanTest {
         assertTrue("$narrow B/s is too much for 4G", narrow <= 140_000)
     }
 
-    @Test fun decimation_is_a_power_of_two() {
-        // The front end is a half-band cascade. A non-power-of-two would be
-        // rounded somewhere downstream and the client would compute its
-        // tuning offsets against a width the station never produced.
+    @Test fun decimation_is_one_the_front_end_will_arm() {
+        // A factor the DSP refuses leaves the client computing its tuning
+        // offsets against a width the station never produced. The set is not
+        // the powers of two — os_setup arms every D that divides the segment
+        // geometry and keeps both transforms 2/3/5-smooth.
         for (rate in intArrayOf(240_000, 960_000, 2_048_000, 2_400_000, 3_200_000)) {
             val plan = NarrowbandPlan.resolve(rate, 12_000, 0) ?: continue
-            assertEquals("rate $rate gave ${plan.decimation}",
-                0, plan.decimation and (plan.decimation - 1))
+            assertTrue(
+                "rate $rate gave ${plan.decimation}",
+                plan.decimation in NarrowbandPlan.DECIMATIONS,
+            )
+        }
+    }
+
+    @Test fun the_extra_rungs_are_actually_used() {
+        // The whole point of widening the ladder: 250 kHz out of 960 kSps
+        // used to round up to a 480 kHz window because 3 was not allowed.
+        val plan = NarrowbandPlan.resolve(960_000, 250_000, 0)!!
+        assertEquals("should decimate by 3, not 2", 3, plan.decimation)
+        assertEquals(320_000, plan.widthHz)
+    }
+
+    @Test fun the_ladder_matches_the_front_ends_geometry() {
+        // Mirrors os_setup: N, K-1 and L all divide by D, and N/D stays
+        // 2/3/5-smooth. Drifting from this arms plans the DSP then refuses.
+        fun smooth(n: Int): Boolean {
+            var v = n
+            for (p in intArrayOf(2, 3, 5)) while (v % p == 0) v /= p
+            return v == 1
+        }
+        val n = 4800
+        val k = 1729
+        val l = n - k + 1
+        for (d in NarrowbandPlan.DECIMATIONS) {
+            assertEquals("N % $d", 0, n % d)
+            assertEquals("(K-1) % $d", 0, (k - 1) % d)
+            assertEquals("L % $d", 0, l % d)
+            assertTrue("N/$d = ${n / d} must be 2/3/5-smooth", smooth(n / d))
+            assertTrue("$d must be within the ceiling", d in 2..NarrowbandPlan.MAX_DECIMATION)
         }
     }
 

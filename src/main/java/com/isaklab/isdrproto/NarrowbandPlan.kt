@@ -13,7 +13,8 @@ import kotlin.math.abs
 /**
  * A resolved narrowband window.
  *
- * @param decimation power-of-two factor applied to the radio's sample rate
+ * @param decimation factor applied to the radio's sample rate; one of
+ *                   [NarrowbandPlan.DECIMATIONS]
  * @param widthHz    the delivered sample rate, i.e. the usable span
  * @param centerHz   absolute frequency the window is centred on
  */
@@ -50,10 +51,10 @@ data class NarrowbandPlan(
         /**
          * Resolve a request against what the radio can actually deliver.
          *
-         * Decimation is a power of two because the DSP front-end is a
-         * half-band cascade — asking for 5x would silently become 4x or 8x
-         * somewhere downstream, and the client would compute its tuning
-         * offsets against a width the station never produced.
+         * The factor is taken from [DECIMATIONS] — the set the front end
+         * will actually arm. Asking for anything else would be refused
+         * downstream, and the client would compute its tuning offsets
+         * against a width the station never produced.
          *
          * @param sampleRateHz the radio's current rate
          * @param requestedWidthHz desired span; clamped to what is reachable
@@ -66,12 +67,10 @@ data class NarrowbandPlan(
             val target = maxOf(requestedWidthHz, MIN_WIDTH_HZ)
             if (sampleRateHz <= target) return null   // nothing to gain
 
-            // Largest power-of-two decimation whose output still covers the
-            // target. Overshooting the target would cut the operator's span.
-            var decim = 1
-            while (sampleRateHz / (decim * 2) >= target && decim < MAX_DECIMATION) {
-                decim *= 2
-            }
+            // Deepest decimation whose output still COVERS the target —
+            // overshooting would cut the operator's span, so it is the
+            // largest factor that still fits, never the closest one.
+            val decim = DECIMATIONS.lastOrNull { sampleRateHz / it >= target } ?: 1
             val width = sampleRateHz / decim
             if (width < MIN_WIDTH_HZ) return null
             return NarrowbandPlan(decim, width, centerHz)
@@ -86,6 +85,24 @@ data class NarrowbandPlan(
          * arrives.
          */
         const val MAX_DECIMATION = 64
+
+        /**
+         * Every decimation the overlap-save front end will actually arm, in
+         * ascending order.
+         *
+         * Not the powers of two. The transform's constraints are that the
+         * segment length N, the overlap K-1 and the useful length L all
+         * divide by D, and that both transform lengths stay 2/3/5-smooth; at
+         * the production geometry (N=4800, K=1729) that admits 3, 6, 12, 24
+         * and 48 as well. Restricting the ladder to powers of two made the
+         * plan round up: 250 kHz out of 960 kSps became a 480 kHz window
+         * instead of 320 kHz, and the link paid half again as much as the
+         * mode needed.
+         *
+         * Kept in step with os_setup — a value the DSP refuses would have the
+         * client sizing its buffers for a window that never arrives.
+         */
+        val DECIMATIONS = listOf(2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64)
 
         /**
          * Normalised phase increment that shifts [centerHz] to DC, for
