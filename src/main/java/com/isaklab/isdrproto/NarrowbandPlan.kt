@@ -11,7 +11,13 @@ package com.isaklab.isdrproto
 import kotlin.math.abs
 
 /**
- * A resolved narrowband window.
+ * Represents a resolved narrowband window applied to the incoming IQ stream.
+ *
+ * Why narrowband? Full SDR streams easily saturate mobile or remote network links (e.g., 
+ * 160 Mbps for raw floats). A narrowband plan shifts a targeted segment of the spectrum 
+ * to DC and applies severe decimation at the driver level. This reduces the bandwidth 
+ * to fractional megabits, transferring only the region of interest while the client 
+ * retains local control of demodulation and TX processing. 
  *
  * @param decimation factor applied to the radio's sample rate; one of
  *                   [NarrowbandPlan.DECIMATIONS]

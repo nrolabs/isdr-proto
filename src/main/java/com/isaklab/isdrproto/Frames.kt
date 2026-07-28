@@ -14,13 +14,23 @@ import java.io.EOFException
 import java.io.IOException
 import java.nio.ByteBuffer
 
-/** One decoded wire frame: opcode + payload positioned at offset 0. */
+/**
+ * Represents a single decoded wire frame within the iSDR protocol.
+ * 
+ * Frames are the fundamental unit of communication between the application and the driver host.
+ * Each frame consists of an operational code ([op]) identifying the command or event, 
+ * and a memory-mapped [payload] buffer positioned at offset 0 for immediate reading.
+ */
 class Frame(val op: Int, val payload: ByteBuffer)
 
 /**
- * Blocking frame reader/writer over a socket stream pair. Writes are
- * serialized internally so driver callback threads and the command path can
- * share one connection.
+ * Handles blocking, serialized I/O for iSDR protocol frames over a socket stream pair.
+ *
+ * Why manual buffering and serialization? The radio streams megabytes of data per second. 
+ * Naive frame allocations would trigger constant GC pauses, manifesting as audio stutter. 
+ * [Frames] mitigates this by maintaining reusable scratch buffers (`scratch`, `readBuf`) 
+ * and protecting socket writes with a lock (`writeLock`). This allows safe concurrent use 
+ * from DSP callbacks and UI command threads without allocating excessive garbage or locking the read path.
  */
 class Frames(
     private val input: DataInputStream,

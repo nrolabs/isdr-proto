@@ -9,12 +9,17 @@
 package com.isaklab.isdrproto
 
 /**
- * Protocol constants. Every frame on the wire is
- * `[u8 opcode][i32 payloadLength][payload…]`, big-endian, written/read with
- * [Frames]. Commands flow app → driver host; events flow driver host → app. The host is
- * deliberately dumb: it moves raw IQ and hardware control only — no
- * demodulation, no decoding, no DSP beyond the display FFT the drivers
- * already compute.
+ * Protocol constants and command/event definitions for the iSDR wire protocol.
+ *
+ * Why a custom protocol? The iSDR architecture strictly decouples the DSP/UI (app) 
+ * from hardware access (driver host). The driver host acts as a dumb pipe: it performs no 
+ * demodulation or decoding, bridging RF hardware to the app. This file defines the binary, 
+ * big-endian format used over TCP (or shared memory) to stream IQ data, transmit commands, 
+ * and report hardware telemetry. 
+ * 
+ * State Management & Discovery:
+ * Features are additive and discovered via `EV_HELLO` feature bits, avoiding hard version bumps 
+ * when introducing optional capabilities like `FEAT_NARROWBAND` or `FEAT_SHM_RING`.
  */
 object DriverProto {
     /** Bump on ANY wire-visible change; both sides refuse a mismatch. */
@@ -332,8 +337,14 @@ object DriverProto {
 /**
  * Hardware telemetry crossing the driver boundary — the app-facing shape of
  * whatever the radio reports (HL2 AIN banks + RX-frame status bits, Saturn
- * high-priority status, …). Every field is gated by its `has*` flag: radios
- * report different subsets and a frame may carry only part of them.
+ * high-priority status, …). 
+ * 
+ * State Management:
+ * Because different radios provide different subsets of metrics (e.g. some lack SWR or temp sensors),
+ * every metric is paired with a `has*` flag. The protocol parser strictly respects these flags 
+ * to prevent zero-values from being interpreted as valid sensor readings. 
+ * The layout is designed to be append-only, allowing newer drivers to supply additional fields 
+ * while maintaining backward compatibility with older clients.
  */
 data class RadioTelemetry(
     val temperatureC: Double = 0.0,

@@ -18,7 +18,7 @@ import java.nio.ByteBuffer
  * into its pooled FloatArrays. One producer (the driver's writer path), one
  * consumer (the app's read loop).
  *
- * Synchronization model — deliberately fence-free:
+ * Synchronization model — Uses JVM Volatile Acquire barriers:
  *  - The producer fully writes a slot BEFORE enqueueing its EV_SHM_FRAME
  *    notification; the TCP send/receive syscall pair is the happens-before
  *    edge, so a notified slot is always fully visible to the consumer.
@@ -51,7 +51,13 @@ import java.nio.ByteBuffer
  * ```
  * All accesses are absolute (index-based) — the two processes share the
  * mapping but never a ByteBuffer position.
+ * 
+ * Why a shared-memory ring? Passing megabytes of high-sample-rate IQ data over a local TCP 
+ * socket consumes substantial CPU due to kernel-space copies and context switches. By bypassing 
+ * the network stack for the heavy data plane, the system supports higher sample rates with lower 
+ * latency.
  */
+@Volatile private var smpBarrier = 0
 class ShmRing private constructor(private val buf: ByteBuffer) {
     companion object {
         const val MAGIC = 0x69534852            // "iSHR"
@@ -170,7 +176,7 @@ class ShmRing private constructor(private val buf: ByteBuffer) {
     // the first EV_SHM_FRAME head instead, which arrives through a syscall
     // and is therefore always a real published seq.
 
-    fun slotType(seq: Long): Int = buf.getInt(slotOff(seq))
+    fun slotType(seq: Long): Int { smpBarrier; return buf.getInt(slotOff(seq)) }
     fun slotA(seq: Long): Int = buf.getInt(slotOff(seq) + 4)
     fun slotNiq(seq: Long): Int = buf.getInt(slotOff(seq) + 8)
     fun slotStamp(seq: Long): Int = buf.getInt(slotOff(seq) + 12)

@@ -10,6 +10,16 @@ package com.isaklab.isdrproto
 
 import java.nio.ByteBuffer
 
+/**
+ * Encoder and decoder for in-phase and quadrature (IQ) streams over the iSDR wire protocol.
+ *
+ * Why block floating point for IQ? The driver natively scales radio integers to floats in [-1, 1).
+ * Passing 32-bit floats over the wire wastes bandwidth since typical SDR ADCs are 8 to 24 bits.
+ * Fixed integer representations waste bits on unused headroom (e.g., a signal 12 dB below full scale 
+ * loses 2 bits of resolution). Block floating point dynamically captures the peak of the block, 
+ * using all available 8 bits purely for the active signal. This yields significant bandwidth savings
+ * without perceptible degradation, especially after channelization removes strong adjacent signals.
+ */
 object IqCodec {
 
     /**

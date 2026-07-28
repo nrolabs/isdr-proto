@@ -16,6 +16,16 @@ package com.isaklab.isdrproto
 
 import java.nio.ByteBuffer
 
+/**
+ * Encoder and decoder for the block-floating-point spectrum format used in the iSDR protocol.
+ *
+ * Why block floating point? A fixed-point representation (e.g. -160 to 0 dB) would waste 
+ * most of its resolution on empty spectrum and clip out-of-bounds signals. By transmitting
+ * a per-frame `min` and `step`, the codec dynamically utilizes the full 8-bit dynamic range 
+ * (256 levels) for the actual signal span in the frame. This reduces bandwidth by 75% 
+ * compared to 32-bit floats while maintaining ~0.5 dB visual resolution, which is 
+ * optimal for panadapter rendering.
+ */
 object SpectrumCodec {
 
     /** Header bytes before the codes: float min, float step. */
