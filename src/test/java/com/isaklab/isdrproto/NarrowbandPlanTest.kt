@@ -106,17 +106,27 @@ class NarrowbandPlanTest {
 
     // ---- the mixer sign: the classic way to lose the signal ---------------
 
-    @Test fun the_shift_brings_the_wanted_signal_towards_zero() {
-        // To move a signal at +f down to DC the mixer must run at -f. The
-        // opposite sign puts it at -f, twice as far out, where the decimation
-        // filter removes it — the radio looks dead and nothing logs an error.
+    @Test fun the_shift_matches_the_front_ends_own_convention() {
+        // Pinned ABSOLUTELY, against the value Demodulator passes for CTUN:
+        // 2*PI*offsetHz/rate, with offset measured POSITIVE for a window
+        // centre above the tuned frequency.
+        //
+        // The earlier version of this test only compared the two directions
+        // against each other, so it stayed green with the sign inverted —
+        // and inverted, the wanted signal is pushed to -f, outside the
+        // protected band, where the decimation filter buries it. The window
+        // then carries noise and nothing reports a fault.
         val rate = 2_048_000
         val centre = 14_074_000L
-        val above = NarrowbandPlan.shiftFor(tunedHz = centre + 10_000, centerHz = centre, sampleRateHz = rate)
-        val below = NarrowbandPlan.shiftFor(tunedHz = centre - 10_000, centerHz = centre, sampleRateHz = rate)
-        assertTrue("a signal above centre must shift one way", above > 0)
-        assertTrue("and below the other", below < 0)
-        assertEquals("magnitudes must match", abs(above), abs(below), 1e-12)
+        val windowAbove = NarrowbandPlan.shiftFor(
+            tunedHz = centre, centerHz = centre + 10_000, sampleRateHz = rate,
+        )
+        val windowBelow = NarrowbandPlan.shiftFor(
+            tunedHz = centre, centerHz = centre - 10_000, sampleRateHz = rate,
+        )
+        assertEquals(2.0 * PI * 10_000 / rate, windowAbove, 1e-12)
+        assertEquals(-2.0 * PI * 10_000 / rate, windowBelow, 1e-12)
+        assertEquals("magnitudes must match", abs(windowAbove), abs(windowBelow), 1e-12)
     }
 
     @Test fun the_shift_is_zero_when_already_centred() {
@@ -125,8 +135,9 @@ class NarrowbandPlanTest {
 
     @Test fun the_shift_matches_the_normalised_frequency() {
         val rate = 48_000
-        val shift = NarrowbandPlan.shiftFor(12_000, 0, rate)   // +12 kHz = rate/4
-        assertEquals(2.0 * PI * 0.25, abs(shift), 1e-9)
+        // Window centre 12 kHz BELOW the tuned centre: rate/4 down.
+        val shift = NarrowbandPlan.shiftFor(12_000, 0, rate)
+        assertEquals(-2.0 * PI * 0.25, shift, 1e-9)
     }
 
     @Test fun shift_survives_a_degenerate_rate() {

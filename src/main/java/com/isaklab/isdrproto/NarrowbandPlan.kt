@@ -91,14 +91,21 @@ data class NarrowbandPlan(
          * Normalised phase increment that shifts [centerHz] to DC, for
          * NativeDsp.setShift.
          *
-         * Sign matters: to BRING a signal at +f to zero the mixer must run at
-         * -f. Getting it backwards puts the wanted signal at -f, twice as far
-         * away, and it disappears past the decimation filter.
+         * Sign matters, and the front end's convention is the POSITIVE
+         * offset of the wanted signal from centre — the same value
+         * Demodulator passes for CTUN (2*PI*shiftHz/rate). Reasoning about a
+         * time-domain NCO suggests the opposite ("to bring +f to zero, mix at
+         * -f"), and that is how this was written; but the overlap-save path
+         * does the coarse shift by SELECTING source bins, where a positive
+         * offset selects the positive bin. Negated, the wanted signal moved
+         * to -f instead, landed outside the protected band, and was buried by
+         * the decimation filter — leaving noise as the strongest thing in the
+         * window rather than an obvious failure.
          */
         fun shiftFor(tunedHz: Long, centerHz: Long, sampleRateHz: Int): Double {
             if (sampleRateHz <= 0) return 0.0
             val offset = (centerHz - tunedHz).toDouble()
-            return -2.0 * Math.PI * offset / sampleRateHz
+            return 2.0 * Math.PI * offset / sampleRateHz
         }
 
         /**
