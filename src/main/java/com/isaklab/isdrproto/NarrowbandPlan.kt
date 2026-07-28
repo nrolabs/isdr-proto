@@ -70,7 +70,11 @@ data class NarrowbandPlan(
             // Deepest decimation whose output still COVERS the target —
             // overshooting would cut the operator's span, so it is the
             // largest factor that still fits, never the closest one.
-            val decim = DECIMATIONS.lastOrNull { sampleRateHz / it >= target } ?: 1
+            // No factor covers the request — WFM out of a 384 kSps radio, say.
+            // Returning a D=1 "window" would have the station run a
+            // decimate-by-one filter and announce a narrowing that never
+            // happened; null keeps the full stream and says so honestly.
+            val decim = DECIMATIONS.lastOrNull { sampleRateHz / it >= target } ?: return null
             val width = sampleRateHz / decim
             if (width < MIN_WIDTH_HZ) return null
             return NarrowbandPlan(decim, width, centerHz)

@@ -217,4 +217,13 @@ class NarrowbandPlanTest {
         assertTrue("$bits bit/s", bits < 600_000)
         assertNotNull(plan)
     }
+
+    @Test fun no_plan_when_no_factor_covers_the_request() {
+        // Wideband FM out of a 384 kSps radio: 250 kHz is more than half the
+        // rate, so nothing can be decimated away. A D=1 plan would announce a
+        // narrowing that did not happen and cost a filter pass for nothing.
+        assertNull(NarrowbandPlan.resolve(384_000, 250_000, 0))
+        // One rung down it becomes possible again.
+        assertNotNull(NarrowbandPlan.resolve(384_000, 180_000, 0))
+    }
 }

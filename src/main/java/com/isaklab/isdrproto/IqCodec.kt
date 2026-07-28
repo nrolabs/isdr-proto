@@ -30,9 +30,29 @@ object IqCodec {
     private const val S16_SCALE = 32768f
     private const val S8_SCALE = 128f
 
+    /**
+     * Block-floating-point header: one float32 scale for the whole block.
+     *
+     * The fixed formats waste whatever headroom the signal is not using —
+     * a stream sitting 12 dB below full scale spends two of its eight bits
+     * on nothing. Carrying the block's own peak instead spends all of them
+     * on the signal that is actually there, which is what makes eight bits
+     * enough after channelisation has removed the strong neighbours.
+     */
+    const val BFP_HEADER_BYTES = 4
+
+    /**
+     * Smallest scale worth encoding. A digitally silent block would
+     * otherwise divide every sample by zero.
+     */
+    private const val MIN_BFP_SCALE = 1e-9f
+
     /** Bytes [count] samples occupy in [format]. */
-    fun encodedSize(format: Int, count: Int): Int =
-        count * DriverProto.iqSampleBytes(format)
+    fun encodedSize(format: Int, count: Int): Int = when (format) {
+        DriverProto.IQ_FORMAT_BFP8 ->
+            if (count == 0) 0 else BFP_HEADER_BYTES + count
+        else -> count * DriverProto.iqSampleBytes(format)
+    }
 
     /**
      * Write [count] samples of [iq] into [out] at [offset] in [format].
@@ -41,6 +61,7 @@ object IqCodec {
     fun encode(iq: FloatArray, count: Int, format: Int, out: ByteArray, offset: Int): Int {
         // Big-endian, like every other field in DriverProto — the existing
         // float32 payload already ships this way and must keep its meaning.
+        if (format == DriverProto.IQ_FORMAT_BFP8) return encodeBfp8(iq, count, out, offset)
         val bb = ByteBuffer.wrap(out, offset, encodedSize(format, count))
         when (format) {
             DriverProto.IQ_FORMAT_S16 ->
@@ -58,6 +79,10 @@ object IqCodec {
      * @return the offset just past the consumed bytes.
      */
     fun decode(src: ByteArray, offset: Int, count: Int, format: Int, out: FloatArray): Int {
+        if (format == DriverProto.IQ_FORMAT_BFP8) {
+            decode(ByteBuffer.wrap(src, offset, encodedSize(format, count)), count, format, out)
+            return offset + encodedSize(format, count)
+        }
         val bb = ByteBuffer.wrap(src, offset, encodedSize(format, count))
         when (format) {
             DriverProto.IQ_FORMAT_S16 ->
@@ -72,6 +97,12 @@ object IqCodec {
 
     /** Decode straight from a positioned buffer (the app's read path). */
     fun decode(bb: ByteBuffer, count: Int, format: Int, out: FloatArray) {
+        if (format == DriverProto.IQ_FORMAT_BFP8) {
+            if (count == 0) return
+            val scale = bb.float
+            for (i in 0 until count) out[i] = bb.get() * scale / S8_SCALE
+            return
+        }
         when (format) {
             DriverProto.IQ_FORMAT_S16 ->
                 for (i in 0 until count) out[i] = bb.short / S16_SCALE
@@ -80,6 +111,37 @@ object IqCodec {
             else ->
                 for (i in 0 until count) out[i] = bb.float
         }
+    }
+
+    /**
+     * Block floating point: normalise by the block's own peak, then spend all
+     * eight bits on it.
+     *
+     * The scale goes on the wire so the decoder can undo it exactly. Peaks
+     * are found before anything is written, which is why this cannot be a
+     * streaming encoder — but a block is a few thousand samples and the pass
+     * is a compare.
+     */
+    private fun encodeBfp8(iq: FloatArray, count: Int, out: ByteArray, offset: Int): Int {
+        if (count == 0) return offset
+        var peak = 0f
+        for (i in 0 until count) {
+            val a = kotlin.math.abs(iq[i])
+            // NaN would make every comparison false and leave peak at 0,
+            // turning the whole block into silence rather than one bad sample.
+            if (a.isNaN()) continue
+            if (a > peak) peak = a
+        }
+        val scale = if (peak < MIN_BFP_SCALE) MIN_BFP_SCALE else peak
+        ByteBuffer.wrap(out, offset, BFP_HEADER_BYTES).putFloat(scale)
+        var p = offset + BFP_HEADER_BYTES
+        val inv = S8_SCALE / scale
+        for (i in 0 until count) {
+            val v = iq[i]
+            val scaled = if (v.isNaN()) 0 else Math.round(v * inv)
+            out[p++] = scaled.coerceIn(Byte.MIN_VALUE.toInt(), Byte.MAX_VALUE.toInt()).toByte()
+        }
+        return p
     }
 
     // Clamp, never wrap: a driver overshooting [-1,1] by a hair would

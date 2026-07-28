@@ -43,22 +43,6 @@ object DriverProto {
     const val FEAT_SEQ_TAG = 4
 
     /**
-     * Host can send IQ in a NARROWER wire format than float32
-     * (CMD_SET_IQ_FORMAT). The sample count in EV_DATA / EV_DATA_RX is
-     * unchanged; only the bytes per sample change.
-     *
-     * float32 was chosen so one format could carry every radio, from the
-     * RTL's 8 bits to the HPSDR boards' 24. That is right for the DSP and
-     * wrong for the wire: an 8-bit dongle ships 4 bytes to carry 1 byte of
-     * information, and at 2.048 MS/s that is 131 Mbit/s instead of 33 —
-     * the difference between a link that works over mobile data and one
-     * that does not.
-     *
-     * Additive: a host that never sends CMD_SET_IQ_FORMAT keeps float32.
-     */
-    const val FEAT_IQ_FORMAT = 8
-
-    /**
      * Host can ask for a NARROWBAND stream: IQ shifted to a chosen centre and
      * decimated to a chosen width, plus a quantised display spectrum
      * (CMD_SET_NARROWBAND).
@@ -74,7 +58,15 @@ object DriverProto {
      */
     const val FEAT_NARROWBAND = 16
 
-    // ---- IQ wire formats (FEAT_IQ_FORMAT) ----
+
+
+    // ---- IQ wire format ----
+    //
+    // float32 was the original choice so one format could carry every radio,
+    // from the RTL's 8 bits to the HPSDR boards' 24. That is right for the
+    // DSP and wrong for the wire: an 8-bit dongle shipped 4 bytes to carry
+    // 1 byte of information. Block floating point carries the block's own
+    // scale instead, so one byte per component serves every radio.
     //
     // Samples stay interleaved i0,q0,i1,q1,... and normalised to [-1,1) on
     // both sides; only the transport encoding narrows. Quantisation is a
@@ -99,16 +91,64 @@ object DriverProto {
      */
     const val IQ_FORMAT_S8 = 2
 
+    /**
+     * Block floating point: a float32 scale for the block, then eight bits
+     * per component measured against it.
+     *
+     * Halves the 24-bit boards' cost (s16 -> one byte) and, on the 8-bit
+     * front ends, reclaims the headroom a fixed scale throws away: a stream
+     * sitting 12 dB below full scale spends two of its eight bits on
+     * nothing. Only worth it after channelisation, which is what removes the
+     * strong neighbours that would otherwise need the extra range.
+     */
+    const val IQ_FORMAT_BFP8 = 3
+
+
+    /**
+     * Spectrum wire encodings. U8 is block floating point (see
+     * SpectrumCodec): a quarter of float32's bytes for a display that
+     * resolves half a decibel.
+     *
+     * It matters once the station channelises. Wideband the spectrum was
+     * noise against the IQ; at a 6 kHz SSB window the float32 spectrum is
+     * three times the IQ it accompanies, and the display — not the signal —
+     * becomes what the link is carrying.
+     */
+    const val SPECTRUM_FORMAT_F32 = 0
+    const val SPECTRUM_FORMAT_U8 = 1
+
+    /**
+     * THE encodings EV_DATA / EV_DATA_RX use on the wire.
+     *
+     * There is no negotiation, deliberately. Two ends that disagree about a
+     * format cannot detect it — every block is garbled and nothing fails —
+     * and that is exactly what happened when the station assumed float32
+     * while the phone had agreed s16 with the driver behind it. One value,
+     * one meaning, no handshake to get wrong.
+     */
+    const val IQ_WIRE_FORMAT = IQ_FORMAT_BFP8
+    const val SPECTRUM_WIRE_FORMAT = SPECTRUM_FORMAT_U8
+
+    /**
+     * Encoding for CMD_TX_IQ_NARROW. The same one, for the same reason —
+     * and on transmit the block scale is worth more than on receive, since
+     * speech spends most of its time well below the peak the level control
+     * is set for.
+     */
+    const val TX_IQ_WIRE_FORMAT = IQ_FORMAT_BFP8
+
     /** Bytes one sample occupies on the wire in [format]. */
     fun iqSampleBytes(format: Int): Int = when (format) {
         IQ_FORMAT_S16 -> 2
         IQ_FORMAT_S8 -> 1
+        IQ_FORMAT_BFP8 -> 1
         else -> 4
     }
 
     /** True when [format] is one this build understands. */
     fun isKnownIqFormat(format: Int): Boolean =
-        format == IQ_FORMAT_F32 || format == IQ_FORMAT_S16 || format == IQ_FORMAT_S8
+        format == IQ_FORMAT_F32 || format == IQ_FORMAT_S16 ||
+            format == IQ_FORMAT_S8 || format == IQ_FORMAT_BFP8
 
     /** Loopback TCP port the driver service listens on. */
     const val PORT = 45733
@@ -141,7 +181,6 @@ object DriverProto {
     const val CMD_SET_PA_ENABLED = 0x23        // u8 bool
     const val CMD_TX_IQ = 0x24                 // f32[] interleaved 48 kSps IQ
     const val CMD_SET_RECEIVER_COUNT = 0x28    // i32 n
-    const val CMD_SET_IQ_FORMAT = 0x29         // i32 IQ_FORMAT_*
     const val CMD_SET_NARROWBAND = 0x2A        // i32 widthHz (0 = off), i64 centerHz
 
     /**
@@ -206,7 +245,7 @@ object DriverProto {
     const val EV_HELLO = 0x81                  // i32 protocol version
     const val EV_OPEN_RESULT = 0x82            // u8 ok
     const val EV_STATUS = 0x83                 // u8 connected, str status
-    const val EV_DATA = 0x84                   // i32 nFft, f32[nFft], i32 nIq, f32[nIq] [, i32 seq (FEAT_SEQ_TAG)]
+    const val EV_DATA = 0x84                   // i32 nFft, spectrum[nFft], i32 nIq, iq[nIq] [, i32 seq (FEAT_SEQ_TAG)]
     const val EV_TELEMETRY = 0x85              // u8 flags, f64 tempC, f64 paA, f64 fwd, f64 rev, f64 volts
     const val EV_SWEEP_BLOCK = 0x86            // i64 lowerEdgeHz, i32 n, f32[n]
     const val EV_TX_STATE = 0x87               // u8 transmitting
@@ -223,7 +262,7 @@ object DriverProto {
      */
     const val EV_NARROWBAND = 0x8A
 
-    const val EV_DATA_RX = 0x89                // i32 rx, i32 nIq, f32[nIq] [, i32 seq (FEAT_SEQ_TAG)]
+    const val EV_DATA_RX = 0x89                // i32 rx, i32 nIq, iq[nIq] [, i32 seq (FEAT_SEQ_TAG)]
 
     // EV_TELEMETRY flag bits (u16)
     const val TLM_HAS_TEMPERATURE = 1

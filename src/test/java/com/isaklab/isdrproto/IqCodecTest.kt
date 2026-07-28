@@ -127,7 +127,83 @@ class IqCodecTest {
         assertTrue(DriverProto.isKnownIqFormat(DriverProto.IQ_FORMAT_F32))
         assertTrue(DriverProto.isKnownIqFormat(DriverProto.IQ_FORMAT_S16))
         assertTrue(DriverProto.isKnownIqFormat(DriverProto.IQ_FORMAT_S8))
-        assertTrue(!DriverProto.isKnownIqFormat(3))
+        assertTrue(DriverProto.isKnownIqFormat(DriverProto.IQ_FORMAT_BFP8))
+        // Anything past the defined set: adopting it would garble every
+        // block rather than fail, so it must be refused.
+        assertTrue(!DriverProto.isKnownIqFormat(99))
         assertTrue(!DriverProto.isKnownIqFormat(-1))
+    }
+
+    // ---- block floating point ---------------------------------------------
+
+    private fun bfpRoundTrip(iq: FloatArray): FloatArray {
+        val f = DriverProto.IQ_FORMAT_BFP8
+        val dst = ByteArray(IqCodec.encodedSize(f, iq.size))
+        val end = IqCodec.encode(iq, iq.size, f, dst, 0)
+        assertEquals("encode must fill exactly what it sized", dst.size, end)
+        val out = FloatArray(iq.size)
+        IqCodec.decode(dst, 0, iq.size, f, out)
+        return out
+    }
+
+    @Test fun bfp8_costs_one_byte_a_component_plus_the_scale() {
+        assertEquals(4 + 1024, IqCodec.encodedSize(DriverProto.IQ_FORMAT_BFP8, 1024))
+        // Half of what a 24-bit board pays today.
+        assertTrue(
+            IqCodec.encodedSize(DriverProto.IQ_FORMAT_BFP8, 1024) <
+                IqCodec.encodedSize(DriverProto.IQ_FORMAT_S16, 1024),
+        )
+    }
+
+    @Test fun bfp8_beats_fixed_s8_on_a_quiet_block() {
+        // The whole claim: a signal well below full scale wastes bits under a
+        // fixed scale, and block floating point gets them back.
+        val n = 512
+        val quiet = FloatArray(n) { (Math.sin(it * 0.05) * 0.02).toFloat() }
+
+        val bfp = bfpRoundTrip(quiet)
+        val s8 = ByteArray(IqCodec.encodedSize(DriverProto.IQ_FORMAT_S8, n))
+        IqCodec.encode(quiet, n, DriverProto.IQ_FORMAT_S8, s8, 0)
+        val fixed = FloatArray(n)
+        IqCodec.decode(s8, 0, n, DriverProto.IQ_FORMAT_S8, fixed)
+
+        var eb = 0.0
+        var ef = 0.0
+        for (i in 0 until n) {
+            eb += (quiet[i] - bfp[i]).toDouble() * (quiet[i] - bfp[i])
+            ef += (quiet[i] - fixed[i]).toDouble() * (quiet[i] - fixed[i])
+        }
+        assertTrue("bfp err $eb must beat fixed-scale err $ef", eb * 4 < ef)
+    }
+
+    @Test fun bfp8_is_accurate_on_a_full_scale_block() {
+        val n = 256
+        val loud = FloatArray(n) { (Math.cos(it * 0.11) * 0.95).toFloat() }
+        val out = bfpRoundTrip(loud)
+        var worst = 0f
+        for (i in 0 until n) worst = maxOf(worst, kotlin.math.abs(loud[i] - out[i]))
+        // One code of 8 bits against the block peak.
+        assertTrue("worst $worst", worst <= 0.95f / 128f)
+    }
+
+    @Test fun a_silent_block_does_not_divide_by_zero() {
+        val out = bfpRoundTrip(FloatArray(64))
+        for (v in out) assertEquals(0f, v, 1e-6f)
+    }
+
+    @Test fun one_nan_cannot_silence_a_whole_bfp_block() {
+        // NaN reaching the peak search would leave the scale at zero and turn
+        // every sample in the block into silence.
+        val iq = FloatArray(32) { 0.5f }
+        iq[5] = Float.NaN
+        val out = bfpRoundTrip(iq)
+        for (i in iq.indices) {
+            assertTrue("sample $i came back NaN", !out[i].isNaN())
+            if (i != 5) assertEquals(0.5f, out[i], 0.01f)
+        }
+    }
+
+    @Test fun bfp8_is_a_known_format() {
+        assertTrue(DriverProto.isKnownIqFormat(DriverProto.IQ_FORMAT_BFP8))
     }
 }
