@@ -63,6 +63,28 @@ object DriverProto {
      */
     const val FEAT_NARROWBAND = 16
 
+    // Capability bits below name a CONCEPT, not a radio. The next board with
+    // an antenna switch or an external clock input reuses the bit rather than
+    // adding one of its own — which is what a single radio-named bit covering
+    // two dozen unrelated opcodes would have forced.
+    //
+    // All of them are gated on a bit rather than a version bump because an app
+    // paired with an older driver host must HIDE the controls instead of
+    // sending opcodes into a void: a switch that appears to work and does
+    // nothing is worse than one that is absent.
+
+    /** Explicit IF/oscillator/filter-path tuning, overriding the automatic map. */
+    const val FEAT_RF_PATH_CONTROL = 32
+
+    /** Antenna switch driven by band, dwell time or manual port select. */
+    const val FEAT_ANTENNA_SWITCH = 64
+
+    /** External clock reference in/out and trigger routing for multi-board sync. */
+    const val FEAT_CLOCK_TRIGGER = 128
+
+    /** Board identity, self-test and stream-shortfall counters. */
+    const val FEAT_BOARD_DIAGNOSTICS = 256
+
 
 
     // ---- IQ wire format ----
@@ -167,7 +189,15 @@ object DriverProto {
     const val DEV_HACKRF = 2
     const val DEV_HL2 = 3
     const val DEV_G2 = 4
-    const val DEV_FLEX = 5   // FlexRadio 6000 (SmartSDR network API)
+    /**
+     * FlexRadio 6000 (SmartSDR network API). DECLARED BUT WITHDRAWN: the
+     * driver library went private and is no longer bundled, so the host
+     * answers this kind with a refusal and the app leaves it out of the radios
+     * it offers. The number stays reserved rather than being reused, so a
+     * client built against an older contract cannot have it mean something
+     * else.
+     */
+    const val DEV_FLEX = 5
 
     /** CMD_OPEN flag bit: HL2 codec drives a classic P1 ANAN board. */
     const val OPEN_FLAG_CLASSIC_BOARD = 1
@@ -187,6 +217,24 @@ object DriverProto {
     const val CMD_TX_IQ = 0x24                 // f32[] interleaved 48 kSps IQ
     const val CMD_SET_RECEIVER_COUNT = 0x28    // i32 n
     const val CMD_SET_NARROWBAND = 0x3A        // i32 widthHz (0 = off), i64 centerHz
+
+    /**
+     * u8 bool — feed DC up the antenna cable for a mast amplifier or active
+     * antenna (the bias tee).
+     *
+     * ONE opcode for one concept. Two radios carried this under two names and
+     * two numbers while the app's capability table and its settings screen had
+     * always treated it as a single feature; the split existed only in the
+     * wire and in the code beneath it.
+     */
+    const val CMD_SET_ANTENNA_POWER = 0x13
+
+    /**
+     * i32 Hz — analogue anti-alias filter width ahead of the converter;
+     * 0 follows the sample rate. Both radios that have this already meant the
+     * same thing by it, including the zero.
+     */
+    const val CMD_SET_ANALOG_FILTER = 0x14
 
     /**
      * Transmit IQ at a REDUCED rate: i32 rateHz, then s16 interleaved IQ.
@@ -234,17 +282,70 @@ object DriverProto {
     const val CMD_HRF_SET_VGA = 0x41           // i32 dB
     const val CMD_HRF_SET_TXVGA = 0x42         // i32 dB
     const val CMD_HRF_SET_AMP = 0x43           // u8 bool
-    const val CMD_HRF_SET_ANTENNA_POWER = 0x44 // u8 bool
     const val CMD_HRF_START_RX = 0x45          // (empty)
     const val CMD_HRF_SWEEP_START = 0x46       // i32 startMHz, i32 stopMHz, i32 rateHz, i32 stepHz
     const val CMD_HRF_SWEEP_STOP = 0x47        // (empty)
+
+    // HackRF, second block. Everything the board can be told to do that is
+    // not a gain or a frequency. These exist because a control the driver
+    // implements but the protocol cannot carry is a control the radio does
+    // not have — the driver had all of these and none of them reached the
+    // app.
+
+    /**
+     * Explicit IF/LO tuning with an RF path filter: i64 ifHz, i64 loHz,
+     * i32 path (0 bypass, 1 low pass, 2 high pass).
+     *
+     * Overrides the intermediate frequency, local oscillator and image-reject
+     * filter the firmware would derive on its own, so a mixer spur or image
+     * landing inside the watched span can be moved out of it.
+     */
+    const val CMD_HRF_SET_FREQ_EXPLICIT = 0x70
+    /** Per-mode bias tee: 9 x u8 — (update, changeOnEntry, enabled) x off/rx/tx. */
+    const val CMD_HRF_SET_BIAS_T_OPTS = 0x71
+    /** u8 — hold sampling until the trigger input fires (multi-board sync). */
+    const val CMD_HRF_SET_HW_SYNC = 0x72
+    /** u8 — let an add-on display (PortaPack) drive the board's own UI. */
+    const val CMD_HRF_SET_UI_ENABLE = 0x73
+    /** i32 mask — front-panel LEDs (bit 0 USB, 1 RX, 2 TX). */
+    const val CMD_HRF_SET_LEDS = 0x74
+    /** u8 — narrowband front-end filter (newer hardware). */
+    const val CMD_HRF_SET_NARROWBAND_FILTER = 0x75
+    /** u8 — 10 MHz reference output on the CLKOUT port. */
+    const val CMD_HRF_SET_CLKOUT = 0x76
+    /** i32 — which pin the external clock input is taken from. */
+    const val CMD_HRF_SET_CLKIN_CTRL = 0x77
+    /** i32 — expansion header P1 signal routing. */
+    const val CMD_HRF_SET_P1_CTRL = 0x78
+    /** i32 — expansion header P2 signal routing. */
+    const val CMD_HRF_SET_P2_CTRL = 0x79
+    /** i32 — transmit underrun watchdog limit in bytes (0 disables). */
+    const val CMD_HRF_SET_TX_UNDERRUN_LIMIT = 0x7A
+    /** i32 — receive overrun watchdog limit in bytes (0 disables). */
+    const val CMD_HRF_SET_RX_OVERRUN_LIMIT = 0x7B
+    /** i32 address, i32 portA, i32 portB — Opera Cake manual port select. */
+    const val CMD_HRF_OPERACAKE_SET_PORTS = 0x7C
+    /** i32 address, i32 mode (0 manual, 1 frequency, 2 time). */
+    const val CMD_HRF_OPERACAKE_SET_MODE = 0x7D
+    /** i32 n, then n x (i32 minMHz, i32 maxMHz, i32 port). */
+    const val CMD_HRF_OPERACAKE_SET_RANGES = 0x7E
+    /** i32 n, then n x (i32 dwellSamples, i32 port). */
+    const val CMD_HRF_OPERACAKE_SET_DWELL = 0x7F
+    /** (empty) — reboot the board. */
+    const val CMD_HRF_RESET = 0x57
+    /** (empty) — ask for EV_HRF_INFO. */
+    const val CMD_HRF_QUERY_INFO = 0x58
+    /** (empty) — ask for EV_HRF_M0_STATE (transmit shortfall counters). */
+    const val CMD_HRF_QUERY_M0_STATE = 0x59
+    /** (empty) — run the board self-test, answered by EV_HRF_SELFTEST. */
+    const val CMD_HRF_SELFTEST = 0x5A
+    /** (empty) — drop an explicit tuning override, back to automatic. */
+    const val CMD_HRF_CLEAR_FREQ_EXPLICIT = 0x5C
     const val CMD_RTL_SET_GAIN = 0x50          // i32 tenths of dB
     const val CMD_RTL_SET_GAIN_MODE = 0x51     // u8 bool (manual)
     const val CMD_RTL_SET_AGC = 0x52           // u8 bool
     const val CMD_RTL_SET_PPM = 0x53           // i32 ppm
-    const val CMD_RTL_SET_BIAS_TEE = 0x54      // u8 bool
     const val CMD_RTL_SET_DIRECT_SAMPLING = 0x55 // i32 mode (0 off, 1 I, 2 Q)
-    const val CMD_RTL_SET_TUNER_BANDWIDTH = 0x56 // i32 hz (0 = auto/track rate)
 
     // ---- events (driver host -> app) ----
     const val EV_HELLO = 0x81                  // i32 protocol version
@@ -268,6 +369,32 @@ object DriverProto {
     const val EV_NARROWBAND = 0x8C
 
     const val EV_DATA_RX = 0x89                // i32 rx, i32 nIq, iq[nIq] [, i32 seq (FEAT_SEQ_TAG)]
+
+    /**
+     * What the HackRF says about itself, in reply to CMD_HRF_QUERY_INFO:
+     * i32 boardId, str boardName, i32 boardRev, str revName, u8 genuineGsg,
+     * i32 platformBits, str platformName, str firmwareVersion,
+     * i32 usbApiVersion, str usbApiName, str serialNumber, u8 clkinPresent,
+     * i32 nOperacake, i32[nOperacake] addresses, i64 cpldChecksum,
+     * u8 revisionKnown, i32 basebandFilterHz, u8 explicitTuningActive,
+     * i32 operacakeMode (-1 unknown).
+     *
+     * The board identity drives which controls are OFFERED, not just what is
+     * displayed: a control the running firmware does not implement must not
+     * appear as a switch that silently does nothing.
+     */
+    const val EV_HRF_INFO = 0x8D
+
+    /**
+     * M0 SGPIO loop state: i32 × 11 in struct order (requestedMode,
+     * requestFlag, activeMode, m0Count, m4Count, numShortfalls,
+     * longestShortfall, shortfallLimit, threshold, nextMode, error).
+     * The board's own verdict on whether the host kept the DAC fed.
+     */
+    const val EV_HRF_M0_STATE = 0x8E
+
+    /** Self-test result: u8 pass, str message, u8 hasRtc, u8 rtcPass. */
+    const val EV_HRF_SELFTEST = 0x8F
 
     // EV_TELEMETRY flag bits (u16)
     const val TLM_HAS_TEMPERATURE = 1
