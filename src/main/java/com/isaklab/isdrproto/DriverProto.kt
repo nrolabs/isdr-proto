@@ -215,6 +215,22 @@ object DriverProto {
     const val CMD_SET_TX_DRIVE = 0x22          // i32 level
     const val CMD_SET_PA_ENABLED = 0x23        // u8 bool
     const val CMD_TX_IQ = 0x24                 // f32[] interleaved 48 kSps IQ
+
+    /**
+     * Transmit chain timing: i32 latencyMs, i32 hangMs.
+     *
+     * [latencyMs] is how much TX audio the radio buffers before keying RF:
+     * it is the slack that absorbs network jitter between the host and the
+     * board. Too small and the first syllable is dropped whenever a packet
+     * arrives late (Wi-Fi/cellular); larger only adds that many ms of
+     * TX latency. [hangMs] keeps the transmitter keyed after the audio
+     * stops, so inter-word gaps do not bounce the T/R relay.
+     *
+     * ONE concept-level opcode, like CMD_SET_ANTENNA_POWER: any radio with a
+     * host-visible TX buffer maps these onto its own registers and clamps to
+     * its own range; radios without the concept ignore the command.
+     */
+    const val CMD_SET_TX_TIMING = 0x25         // i32 latencyMs, i32 hangMs
     const val CMD_SET_RECEIVER_COUNT = 0x28    // i32 n
     const val CMD_SET_NARROWBAND = 0x3A        // i32 widthHz (0 = off), i64 centerHz
 
