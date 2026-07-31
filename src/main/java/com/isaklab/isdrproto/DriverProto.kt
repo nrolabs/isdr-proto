@@ -289,6 +289,10 @@ object DriverProto {
     const val CMD_HL2_SET_AMP_KEY = 0x34       // i32 ampPinMask, i32 txDelayMs, i32 hangMs
     const val CMD_HL2_SET_VNA_COUNT = 0x35     // i32 sweep points (addr 0x09 data[15:0])
     const val CMD_HL2_SET_PURESIGNAL = 0x36    // u8 bool (addr 0x0A data[22] feedback routing)
+    // N2ADR IO board (Pico I2C slave 0x1D): u8 enabled, i32 rfInput (REG_RF_INPUTS
+    // 0..2), i32 opMode (Thetis mode codes, -1 = unknown). While enabled the
+    // driver mirrors TX/RX frequencies into the board's registers itself.
+    const val CMD_HL2_SET_IOBOARD = 0x37
     // Gateware iambic keyer: u8 enabled, i32 wpm, i32 mode(0/1/2), i32 weight,
     // u8 spacing, u8 reverse, i32 pttDelayMs, i32 hangMs
     const val CMD_HL2_SET_CW_KEYER = 0x3B
