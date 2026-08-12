@@ -253,6 +253,17 @@ object DriverProto {
     const val CMD_SET_ANALOG_FILTER = 0x14
 
     /**
+     * Panadapter window: i32 decimation (1 = the whole stream), i64 offsetHz
+     * from the stream centre.
+     *
+     * A decimation above 1 narrows the span BEFORE the transform, which is
+     * the only thing that resolves finer: slicing finished bins cannot
+     * separate what the transform never separated. The driver answers with
+     * EV_SPECTRUM_ZOOM.
+     */
+    const val CMD_SET_SPECTRUM_ZOOM = 0x15
+
+    /**
      * Transmit IQ at a REDUCED rate: i32 rateHz, then s16 interleaved IQ.
      *
      * CMD_TX_IQ carries 48 kSps float32 — 3.07 Mbit/s upstream to convey
@@ -479,6 +490,15 @@ object DriverProto {
      * (EV_DATA_RX before EV_DATA of the same span) and status ordering hold.
      */
     const val EV_SHM_FRAME = 0x8B
+
+    /**
+     * The panadapter window actually in force: i32 decimation, i64 offsetHz.
+     *
+     * Sent whenever it changes, including when the driver clamped what was
+     * asked for. The app labels its axis from THIS, never from the request: a
+     * display that draws one span and names another is worse than none.
+     */
+    const val EV_SPECTRUM_ZOOM = 0x91
 }
 
 /**
