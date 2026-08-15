@@ -499,6 +499,30 @@ object DriverProto {
      * display that draws one span and names another is worse than none.
      */
     const val EV_SPECTRUM_ZOOM = 0x91
+
+    /**
+     * The baseband rate the hardware is ACTUALLY running: i32 hz.
+     *
+     * Sent when a radio opens — a converter keeps the clock a previous
+     * session left it on, so the rate in force at open is not the app's
+     * default — and after every CMD_SET_SAMPLE_RATE, whether or not the
+     * request was met exactly. The app scales its spectrum, its NCO and its
+     * audio decimation by THIS value and never by the one it asked for.
+     */
+    const val EV_SAMPLE_RATE = 0x90
+
+    /**
+     * The frequency the receiver is ACTUALLY programmed to: i64 hz.
+     *
+     * Same truth-over-request rule as EV_SAMPLE_RATE: sent when a radio
+     * opens (whatever it powered up on or a previous session left it
+     * holding) and after every CMD_SET_FREQUENCY. This is the tuning path's
+     * reconciliation — without it, a tune that never reached the hardware
+     * leaves the app displaying one band while the IQ carries another, and
+     * nothing anywhere can detect the divergence. A driver that cannot read
+     * its frequency back sends nothing rather than a guess.
+     */
+    const val EV_FREQUENCY = 0x92
 }
 
 /**
