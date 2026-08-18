@@ -208,6 +208,14 @@ object DriverProto {
      */
     const val DEV_CAT = 6
 
+    /**
+     * Native IQ from the dedicated USB ports of the IC-7610 and IC-R8600 —
+     * a real SDR front end, not a CAT radio. Open payload: host = path of
+     * the operator's .spt firmware file (IC-R8600; empty for the IC-7610),
+     * flags 0 = either rig, 1 = IC-7610 only, 2 = IC-R8600 only.
+     */
+    const val DEV_ICOM_IQ = 7
+
     /** CMD_OPEN flag bit: HL2 codec drives a classic P1 ANAN board. */
     const val OPEN_FLAG_CLASSIC_BOARD = 1
 
