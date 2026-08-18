@@ -211,6 +211,17 @@ object DriverProto {
     /** CMD_OPEN flag bit: HL2 codec drives a classic P1 ANAN board. */
     const val OPEN_FLAG_CLASSIC_BOARD = 1
 
+    // ---- DEV_CAT open-flags layout ----
+    // Low byte: dialect-specific station address (CI-V bus address; 0 = probe).
+    // Bits 8..11: the CAT dialect the driver must speak.
+    const val CAT_DIALECT_SHIFT = 8
+    const val CAT_DIALECT_MASK = 0xF shl CAT_DIALECT_SHIFT
+    const val CAT_DIALECT_CIV = 0
+    const val CAT_DIALECT_KENWOOD = 1
+
+    /** The dialect carried in a DEV_CAT open's flags word. */
+    fun catDialect(flags: Int): Int = (flags and CAT_DIALECT_MASK) shr CAT_DIALECT_SHIFT
+
     // ---- commands (app -> driver host) ----
     const val CMD_HELLO = 0x01                 // i32 protocol version
     const val CMD_AUTH = 0x04                  // str token (LAN sessions only)
