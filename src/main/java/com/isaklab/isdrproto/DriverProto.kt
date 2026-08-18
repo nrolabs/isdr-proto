@@ -199,6 +199,15 @@ object DriverProto {
      */
     const val DEV_FLEX = 5
 
+    /**
+     * CAT rig (control protocol, no IQ plane): the driver picks the dialect —
+     * CI-V today; Yaesu/Kenwood/Flex are future dialects behind the same kind.
+     * Open payload: host = serial device path or TCP-bridge host, port = baud
+     * when serial (0 = 115200) else TCP port, flags low byte = bus address
+     * (0 = probe).
+     */
+    const val DEV_CAT = 6
+
     /** CMD_OPEN flag bit: HL2 codec drives a classic P1 ANAN board. */
     const val OPEN_FLAG_CLASSIC_BOARD = 1
 
@@ -480,6 +489,7 @@ object DriverProto {
      * EV_SHM_RESULT; only after an ok=1 reply does the data plane switch.
      */
     const val CMD_SHM_ATTACH = 0x60
+    const val CMD_CAT_SET_MODE = 0x68        // i32 CAT operating-mode code (dialect-defined)
 
     /** u8 ok — ring data plane active (1) or unavailable (0). */
     const val EV_SHM_RESULT = 0x8A
