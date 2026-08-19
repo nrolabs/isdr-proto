@@ -509,6 +509,27 @@ object DriverProto {
      */
     const val CMD_SHM_ATTACH = 0x60
     const val CMD_CAT_SET_MODE = 0x68        // i32 CAT operating-mode code (dialect-defined)
+    /**
+     * i32 control id (CATCTL_*), i32 value — the rig's OWN receive controls,
+     * driven over CAT. Each dialect maps the shared id onto its wire and
+     * ignores ids its rig does not have (the UI hides those by capability).
+     */
+    const val CMD_CAT_SET_CONTROL = 0x69
+
+    // ---- CAT rig control ids (CMD_CAT_SET_CONTROL) ----
+    const val CATCTL_FIL = 1
+    const val CATCTL_RF_GAIN = 2
+    const val CATCTL_SQUELCH = 3
+    const val CATCTL_NR = 4
+    const val CATCTL_NB = 5
+    const val CATCTL_NOTCH_AUTO = 6
+    const val CATCTL_AGC = 7
+    const val CATCTL_PREAMP = 8
+    const val CATCTL_ATT = 9
+    const val CATCTL_PBT_IN = 10
+    const val CATCTL_PBT_OUT = 11
+    const val CATCTL_FILTER_WIDTH = 12
+    const val CATCTL_AF_GAIN = 13
 
     /** u8 ok — ring data plane active (1) or unavailable (0). */
     const val EV_SHM_RESULT = 0x8A
