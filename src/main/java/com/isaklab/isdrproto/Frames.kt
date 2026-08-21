@@ -206,10 +206,10 @@ class Frames(
 
     fun writeTelemetry(t: RadioTelemetry) {
         // u16 flags + u8 state bits + six f64 channels + i64 rxGaps +
-        // i64 linkDrops. Grown append-only: a reader stops at what it knows —
-        // the frame is length-prefixed, so trailing bytes are skipped and
-        // unknown flags stay meaningless to it.
-        val bb = ByteBuffer.allocate(2 + 1 + 6 * 8 + 2 * 8)
+        // i64 linkDrops + f64 smeterDbm. Grown append-only: a reader stops at
+        // what it knows — the frame is length-prefixed, so trailing bytes are
+        // skipped and unknown flags stay meaningless to it.
+        val bb = ByteBuffer.allocate(2 + 1 + 6 * 8 + 2 * 8 + 8)
         bb.putShort(t.flags().toShort())
         bb.put(t.stateBits().toByte())
         bb.putDouble(t.temperatureC)
@@ -220,6 +220,7 @@ class Frames(
         bb.putDouble(t.exciterPower)
         bb.putLong(t.rxGaps)
         bb.putLong(t.linkDrops)
+        bb.putDouble(t.smeterDbm)
         bb.flip()
         write(DriverProto.EV_TELEMETRY, bb)
     }
@@ -274,5 +275,6 @@ fun ByteBuffer.getTelemetry(): RadioTelemetry {
         // append-only tail — absent when the writer predates these fields.
         rxGaps = if (remaining() >= 8) long else 0L,
         linkDrops = if (remaining() >= 8) long else 0L,
+        smeterDbm = if (remaining() >= 8) double else 0.0,
     )
 }

@@ -471,6 +471,12 @@ object DriverProto {
     const val TLM_HAS_RX_GAPS = 512
     /** Outbound data frames dropped by the host's backpressure queue. */
     const val TLM_HAS_LINK_DROPS = 1024
+    /**
+     * The radio's own S-meter, dBm at the antenna (f64 after the counters).
+     * A rig that measures its signal itself (a CAT rig's meter) reports it
+     * here; a radio that streams IQ leaves it to the app's measurement.
+     */
+    const val TLM_HAS_SMETER = 2048
 
     // EV_TELEMETRY state bits (u8)
     const val TLM_ST_ADC_OVERLOAD = 1
@@ -647,6 +653,8 @@ data class RadioTelemetry(
     val rxGaps: Long = 0,
     /** Outbound frames dropped by the host's per-session backpressure queue. */
     val linkDrops: Long = 0,
+    /** The radio's own S-meter reading, dBm at the antenna (S9 = −73 dBm). */
+    val smeterDbm: Double = 0.0,
     val hasTemperature: Boolean = false,
     val hasCurrent: Boolean = false,
     val hasFwdPower: Boolean = false,
@@ -658,6 +666,7 @@ data class RadioTelemetry(
     val hasKeyInputs: Boolean = false,
     val hasRxGaps: Boolean = false,
     val hasLinkDrops: Boolean = false,
+    val hasSmeter: Boolean = false,
 ) {
     fun flags(): Int =
         (if (hasTemperature) DriverProto.TLM_HAS_TEMPERATURE else 0) or
@@ -670,7 +679,8 @@ data class RadioTelemetry(
             (if (hasExciterPower) DriverProto.TLM_HAS_EXCITER_POWER else 0) or
             (if (hasKeyInputs) DriverProto.TLM_HAS_KEY_INPUTS else 0) or
             (if (hasRxGaps) DriverProto.TLM_HAS_RX_GAPS else 0) or
-            (if (hasLinkDrops) DriverProto.TLM_HAS_LINK_DROPS else 0)
+            (if (hasLinkDrops) DriverProto.TLM_HAS_LINK_DROPS else 0) or
+            (if (hasSmeter) DriverProto.TLM_HAS_SMETER else 0)
 
     fun stateBits(): Int =
         (if (adcOverload) DriverProto.TLM_ST_ADC_OVERLOAD else 0) or
@@ -684,12 +694,12 @@ data class RadioTelemetry(
             flags: Int, state: Int,
             tempC: Double, paA: Double, fwd: Double, rev: Double, volts: Double,
             exciter: Double,
-            rxGaps: Long = 0, linkDrops: Long = 0,
+            rxGaps: Long = 0, linkDrops: Long = 0, smeterDbm: Double = 0.0,
         ) = RadioTelemetry(
             temperatureC = tempC, paCurrentA = paA,
             forwardPower = fwd, reversePower = rev, supplyVolts = volts,
             exciterPower = exciter,
-            rxGaps = rxGaps, linkDrops = linkDrops,
+            rxGaps = rxGaps, linkDrops = linkDrops, smeterDbm = smeterDbm,
             adcOverload = state and DriverProto.TLM_ST_ADC_OVERLOAD != 0,
             pllLocked = state and DriverProto.TLM_ST_PLL_LOCKED != 0,
             keyPtt = state and DriverProto.TLM_ST_KEY_PTT != 0,
@@ -706,6 +716,7 @@ data class RadioTelemetry(
             hasKeyInputs = flags and DriverProto.TLM_HAS_KEY_INPUTS != 0,
             hasRxGaps = flags and DriverProto.TLM_HAS_RX_GAPS != 0,
             hasLinkDrops = flags and DriverProto.TLM_HAS_LINK_DROPS != 0,
+            hasSmeter = flags and DriverProto.TLM_HAS_SMETER != 0,
         )
     }
 }
