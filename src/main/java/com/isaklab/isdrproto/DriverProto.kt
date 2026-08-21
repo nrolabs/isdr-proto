@@ -531,6 +531,13 @@ object DriverProto {
     const val CATCTL_FILTER_WIDTH = 12
     const val CATCTL_AF_GAIN = 13
 
+    /**
+     * The rig's own RF output power setting, 0..255 on the rig's scale (CI-V
+     * 0x14 0x0A; Kenwood PC in watts, scaled by the model's rating). A CAT
+     * rig's transmit drive IS this control: CMD_SET_TX_DRIVE lands here.
+     */
+    const val CATCTL_RF_POWER = 14
+
     /** u8 ok — ring data plane active (1) or unavailable (0). */
     const val EV_SHM_RESULT = 0x8A
 
@@ -573,6 +580,39 @@ object DriverProto {
      * its frequency back sends nothing rather than a guess.
      */
     const val EV_FREQUENCY = 0x92
+
+    /**
+     * Liveness mark from the host, empty payload, sent only when nothing
+     * else has gone out for [KEEPALIVE_IDLE_MS]. A radio that streams
+     * nothing (a CAT rig whose scope is off, or that has none) leaves the
+     * link silent for as long as the operator listens, and a quiet link is
+     * indistinguishable from a dead one to a read deadline or a relay's
+     * idle timeout. Carries no state; a client that does not know it skips
+     * it like any other unknown event.
+     */
+    const val EV_KEEPALIVE = 0x93
+
+    /** Outbound silence after which the host sends [EV_KEEPALIVE]. */
+    const val KEEPALIVE_IDLE_MS = 2_000L
+
+    /**
+     * A CAT rig's operating mode as the RIG reports it: i32 code in the
+     * CMD_CAT_SET_MODE space (CI-V numbering, CAT_MODE_DATA_FLAG for the
+     * DATA variant). Sent when the rig's own panel changes the mode, and
+     * after every mode set — the rig applies its own rules to a mode change
+     * (each mode remembers its own IF filter, a DATA mode may be refused)
+     * and what it settled on is the truth the app displays. Never an echo
+     * of the app's request: a set that changed nothing reports nothing.
+     */
+    const val EV_CAT_MODE = 0x94
+
+    /**
+     * One of a CAT rig's own controls as the RIG holds it: i32 id
+     * (CATCTL_*), i32 value. The rig's front panel is a second operator — a
+     * knob turned there is reported here so the app's control follows it;
+     * the app's own sets are not echoed.
+     */
+    const val EV_CAT_CONTROL = 0x95
 }
 
 /**
