@@ -35,6 +35,8 @@ class Frame(val op: Int, val payload: ByteBuffer)
 class Frames(
     private val input: DataInputStream,
     private val output: DataOutputStream,
+    /** Optional observer called after serialization and immediately before flush. */
+    private val onWrite: ((op: Int) -> Unit)? = null,
 ) {
     companion object {
         /** Upper bound sanity check: no legal frame carries more than this. */
@@ -95,6 +97,7 @@ class Frames(
         output.writeByte(op)
         output.writeInt(payload.remaining())
         output.write(payload.array(), payload.arrayOffset() + payload.position(), payload.remaining())
+        onWrite?.invoke(op)
         output.flush()
     }
 
@@ -110,6 +113,7 @@ class Frames(
             output.writeByte(op)
             output.writeInt(len)
             output.write(payload, 0, len)
+            onWrite?.invoke(op)
             output.flush()
         }
     }
@@ -171,13 +175,26 @@ class Frames(
         }
     }
 
-    /** EV_HELLO with the trailing host feature bits (additive; old apps read only the version). */
+    /** Exact V2 EV_HELLO: version followed by the mandatory feature word. */
     fun writeHello(version: Int, features: Int) {
         val bb = ByteBuffer.allocate(8)
         bb.putInt(version)
         bb.putInt(features)
         bb.flip()
         write(DriverProto.EV_HELLO, bb)
+    }
+
+    /** EV_COMMAND_RESULT: command opcode, disposition and UTF diagnostic. */
+    fun writeCommandResult(opcode: Int, disposition: Int, detail: String = "") {
+        val utf = detail.toByteArray(Charsets.UTF_8)
+        require(utf.size <= 0xFFFF) { "command-result detail too long" }
+        val bb = ByteBuffer.allocate(4 + utf.size)
+        bb.put(opcode.toByte())
+        bb.put(disposition.toByte())
+        bb.putShort(utf.size.toShort())
+        bb.put(utf)
+        bb.flip()
+        write(DriverProto.EV_COMMAND_RESULT, bb)
     }
 
     /** EV_SWEEP_BLOCK: frequency-tagged IQ block. */
@@ -241,7 +258,11 @@ class Frames(
 
 // ---- payload readers (shared by both sides) ----
 
-fun ByteBuffer.getBool(): Boolean = get().toInt() != 0
+fun ByteBuffer.getBool(): Boolean = when (val value = get().toInt() and 0xFF) {
+    0 -> false
+    1 -> true
+    else -> throw java.io.IOException("non-canonical boolean $value")
+}
 
 fun ByteBuffer.getUtf(): String {
     val len = short.toInt() and 0xFFFF

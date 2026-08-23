@@ -23,14 +23,11 @@ package com.isaklab.isdrproto
  */
 object DriverProto {
     /** Bump on ANY wire-visible change; both sides refuse a mismatch. */
-    const val VERSION = 1
+    const val VERSION = 2
 
-    // ---- host feature bits (EV_HELLO trailing i32; absent = 0) ----
-    // Additive capability discovery: EV_HELLO grew a trailing features word
-    // (old apps read only the version and skip the rest — frames are
-    // length-prefixed). New opcodes are gated on these bits so a version
-    // bump — which both sides refuse on mismatch — is never needed for
-    // additive growth.
+    // ---- host feature bits (mandatory EV_HELLO second i32) ----
+    // Additive capabilities are gated by these bits. Protocol V2 requires
+    // the complete version + features greeting and rejects legacy shapes.
     /** Host can stream per-receiver IQ (CMD_SET_RX_STREAM_MASK / EV_DATA_RX). */
     const val FEAT_RX_STREAMS = 1
 
@@ -84,6 +81,13 @@ object DriverProto {
 
     /** Board identity, self-test and stream-shortfall counters. */
     const val FEAT_BOARD_DIAGNOSTICS = 256
+
+    /**
+     * Every control-plane command receives [EV_COMMAND_RESULT]. Bulk TX IQ
+     * is deliberately excluded: it is a stream protected by the transmitter
+     * watchdog, not a control transaction.
+     */
+    const val FEAT_COMMAND_RESULTS = 512
 
 
 
@@ -515,6 +519,8 @@ object DriverProto {
      */
     const val CMD_SHM_ATTACH = 0x60
     const val CMD_CAT_SET_MODE = 0x68        // i32 CAT operating-mode code (dialect-defined)
+    /** OR-flag selecting the DATA variant of a CAT operating mode. */
+    const val CAT_MODE_DATA_FLAG = 0x100
     /**
      * i32 control id (CATCTL_*), i32 value — the rig's OWN receive controls,
      * driven over CAT. Each dialect maps the shared id onto its wire and
@@ -619,6 +625,25 @@ object DriverProto {
      * the app's own sets are not echoed.
      */
     const val EV_CAT_CONTROL = 0x95
+
+    /** Result of an app-originated CAT control write. */
+    const val EV_CAT_CONTROL_RESULT = 0x96
+
+    /** Result of an app-originated CAT mode write. */
+    const val EV_CAT_MODE_RESULT = 0x97
+
+    /**
+     * Terminal disposition of one control-plane command: u8 original opcode,
+     * u8 disposition ([COMMAND_ACCEPTED] etc.), UTF diagnostic. Silence is
+     * never a valid representation of rejection or lack of support.
+     */
+    const val EV_COMMAND_RESULT = 0x98
+
+    const val COMMAND_ACCEPTED = 0
+    const val COMMAND_UNSUPPORTED = 1
+    const val COMMAND_REJECTED = 2
+    const val COMMAND_NO_RADIO = 3
+    const val COMMAND_MALFORMED = 4
 }
 
 /**

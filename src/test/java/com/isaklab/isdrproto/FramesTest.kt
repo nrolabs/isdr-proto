@@ -17,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /** Every payload shape must round-trip bit-exact through the frame codec. */
@@ -73,23 +74,39 @@ class FramesTest {
         assertArrayEquals(iq, f.payload.getFloats(), 0f)
     }
 
-    @Test fun helloFeaturesAreTrailingAndOptional() {
+    @Test fun v2HelloCarriesTheMandatoryFeatureWord() {
         val sink = ByteArrayOutputStream()
         writer(sink).writeHello(DriverProto.VERSION, DriverProto.FEAT_RX_STREAMS)
 
         val f = reader(sink.toByteArray()).read()!!
         assertEquals(DriverProto.EV_HELLO, f.op)
         assertEquals(DriverProto.VERSION, f.payload.int)
-        // an old app stops here; a new one reads the trailing features word
-        assertTrue(f.payload.remaining() >= 4)
+        assertEquals(4, f.payload.remaining())
         assertEquals(DriverProto.FEAT_RX_STREAMS, f.payload.int)
+        assertEquals(0, f.payload.remaining())
+    }
 
-        // legacy hello (version only) still parses: features default to 0
-        val sink2 = ByteArrayOutputStream()
-        writer(sink2).writeI32(DriverProto.EV_HELLO, DriverProto.VERSION)
-        val f2 = reader(sink2.toByteArray()).read()!!
-        assertEquals(DriverProto.VERSION, f2.payload.int)
-        assertEquals(0, f2.payload.remaining())
+    @Test fun commandResultRoundTrip() {
+        val sink = ByteArrayOutputStream()
+        writer(sink).writeCommandResult(
+            DriverProto.CMD_SET_PTT,
+            DriverProto.COMMAND_REJECTED,
+            "PTT was not confirmed",
+        )
+        val f = reader(sink.toByteArray()).read()!!
+        assertEquals(DriverProto.EV_COMMAND_RESULT, f.op)
+        assertEquals(DriverProto.CMD_SET_PTT, f.payload.get().toInt() and 0xFF)
+        assertEquals(DriverProto.COMMAND_REJECTED, f.payload.get().toInt() and 0xFF)
+        assertEquals("PTT was not confirmed", f.payload.getUtf())
+        assertEquals(0, f.payload.remaining())
+    }
+
+    @Test fun booleanReaderRejectsNonCanonicalWireValues() {
+        assertFalse(java.nio.ByteBuffer.wrap(byteArrayOf(0)).getBool())
+        assertTrue(java.nio.ByteBuffer.wrap(byteArrayOf(1)).getBool())
+        assertThrows(java.io.IOException::class.java) {
+            java.nio.ByteBuffer.wrap(byteArrayOf(2)).getBool()
+        }
     }
 
     @Test fun emptySpectrumData() {
