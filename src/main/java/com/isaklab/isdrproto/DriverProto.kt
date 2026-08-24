@@ -45,6 +45,13 @@ object DriverProto {
     const val FEAT_SEQ_TAG = 4
 
     /**
+     * Host decodes classic-HPSDR CMD_OPEN profile bits, validates the
+     * discovery board family and preserves the exact chassis contract.
+     * A client must require this before opening any non-HL2 Protocol-1 radio.
+     */
+    const val FEAT_HPSDR_EXACT_PROFILE = 8
+
+    /**
      * Host can ask for a NARROWBAND stream: IQ shifted to a chosen centre and
      * decimated to a chosen width, plus a quantised display spectrum
      * (CMD_SET_NARROWBAND).
@@ -89,7 +96,16 @@ object DriverProto {
      */
     const val FEAT_COMMAND_RESULTS = 512
 
+    /**
+     * Host implements an explicit, typed receiver-to-ADC/diversity route.
+     * This is deliberately distinct from [FEAT_RX_STREAMS]: a stream mask
+     * only requests delivery and cannot say whether its owner is diversity,
+     * PureSignal or an ordinary SubRX.
+     */
+    const val FEAT_RX_ADC_ROUTING = 1024
 
+    /** Host reports exact RTL tuner identity and discrete gain table. */
+    const val FEAT_RTL_GAIN_TABLE = 2048
 
     // ---- IQ wire format ----
     //
@@ -191,7 +207,15 @@ object DriverProto {
     const val DEV_RTL_TCP = 0
     const val DEV_RTL_USB = 1
     const val DEV_HACKRF = 2
-    const val DEV_HL2 = 3
+    /** OpenHPSDR Protocol-1 transport (HL2 or an exact classic ANAN profile). */
+    const val DEV_HPSDR_P1 = 3
+
+    /** Legacy wire-name alias; new contracts use [DEV_HPSDR_P1]. */
+    @Deprecated(
+        message = "DEV_HL2 names one product, but wire kind 3 is all openHPSDR Protocol 1 radios",
+        replaceWith = ReplaceWith("DEV_HPSDR_P1"),
+    )
+    const val DEV_HL2 = DEV_HPSDR_P1
     const val DEV_G2 = 4
     /**
      * FlexRadio 6000 (SmartSDR network API). DECLARED BUT WITHDRAWN: the
@@ -222,6 +246,47 @@ object DriverProto {
 
     /** CMD_OPEN flag bit: HL2 codec drives a classic P1 ANAN board. */
     const val OPEN_FLAG_CLASSIC_BOARD = 1
+
+    /**
+     * Classic-ANAN chassis identity in bits 1..4. Bit 0 remains the codec
+     * discriminator above. Names and values intentionally match the Rust
+     * wire contract; never infer a chassis from legacy flags=1.
+     */
+    const val OPEN_HPSDR_CHASSIS_SHIFT = 1
+    const val OPEN_HPSDR_CHASSIS_MASK = 0xF shl OPEN_HPSDR_CHASSIS_SHIFT
+    const val OPEN_HPSDR_CHASSIS_LEGACY = 0
+    const val OPEN_HPSDR_CHASSIS_ANAN10 = 1
+    const val OPEN_HPSDR_CHASSIS_ANAN100 = 2
+    const val OPEN_HPSDR_CHASSIS_ANAN10E = 3
+    const val OPEN_HPSDR_CHASSIS_ANAN100B = 4
+    const val OPEN_HPSDR_CHASSIS_ANAN100D = 5
+    const val OPEN_HPSDR_CHASSIS_ANAN200D = 6
+    const val OPEN_HPSDR_CHASSIS_ANAN7000 = 7
+    const val OPEN_HPSDR_CHASSIS_ANAN8000 = 8
+    /** Bit 0 codec discriminator plus bits 1..4 exact chassis code. */
+    const val OPEN_HPSDR_KNOWN_FLAGS = 31
+
+    /** Raw chassis code from a fully validated HPSDR-P1 open-flags word. */
+    fun hpsdrChassisProfile(flags: Int): Int =
+        (flags and OPEN_HPSDR_CHASSIS_MASK) shr OPEN_HPSDR_CHASSIS_SHIFT
+
+    fun isKnownHpsdrChassisProfile(profile: Int): Boolean =
+        profile in OPEN_HPSDR_CHASSIS_LEGACY..OPEN_HPSDR_CHASSIS_ANAN8000
+
+    /** Build exact classic flags; legacy profile zero remains intentionally ambiguous. */
+    fun hpsdrClassicOpenFlags(profile: Int): Int {
+        require(isKnownHpsdrChassisProfile(profile)) { "unknown HPSDR chassis $profile" }
+        return OPEN_FLAG_CLASSIC_BOARD or (profile shl OPEN_HPSDR_CHASSIS_SHIFT)
+    }
+
+    /** HL2=0 or one exact classic chassis; flags=1 is legacy ambiguity. */
+    fun isExactHpsdrP1OpenFlags(flags: Int): Boolean {
+        if (flags == 0) return true
+        if (flags and OPEN_HPSDR_KNOWN_FLAGS.inv() != 0) return false
+        if (flags and OPEN_FLAG_CLASSIC_BOARD == 0) return false
+        return hpsdrChassisProfile(flags) in
+            OPEN_HPSDR_CHASSIS_ANAN10..OPEN_HPSDR_CHASSIS_ANAN8000
+    }
 
     // ---- DEV_CAT open-flags layout ----
     // Low byte: dialect-specific station address (CI-V bus address; 0 = probe).
@@ -321,6 +386,8 @@ object DriverProto {
     // EV_DATA). 0 = off (default). Generic N-RX foundation: diversity
     // combining today; TX-monitor receivers and multi-RX audio later.
     const val CMD_SET_RX_STREAM_MASK = 0x2B    // i32 mask
+    /** u8 enabled, i32 referenceReceiver, i32 memberMask. */
+    const val CMD_SET_DIVERSITY = 0x2D
     const val CMD_HL2_SET_LNA = 0x30           // i32 dB
     const val CMD_HL2_SET_VNA_MODE = 0x31      // u8 bool
     const val CMD_HL2_SET_TR_DISABLE = 0x32    // u8 bool
@@ -408,6 +475,7 @@ object DriverProto {
     const val CMD_RTL_SET_GAIN_MODE = 0x51     // u8 bool (manual)
     const val CMD_RTL_SET_AGC = 0x52           // u8 bool
     const val CMD_RTL_SET_PPM = 0x53           // i32 ppm
+    const val CMD_RTL_QUERY_INFO = 0x54        // (empty), answered by EV_RTL_INFO
     const val CMD_RTL_SET_DIRECT_SAMPLING = 0x55 // i32 mode (0 off, 1 I, 2 Q)
 
     // ---- events (driver host -> app) ----
@@ -440,13 +508,33 @@ object DriverProto {
      * i32 usbApiVersion, str usbApiName, str serialNumber, u8 clkinPresent,
      * i32 nOperacake, i32[nOperacake] addresses, i64 cpldChecksum,
      * u8 revisionKnown, i32 basebandFilterHz, u8 explicitTuningActive,
-     * i32 operacakeMode (-1 unknown).
+     * i32 operacakeMode (-1 unknown), i32 supportedControls,
+     * i32 queryFailedMask (optional trailing field for older-host compatibility).
      *
      * The board identity drives which controls are OFFERED, not just what is
      * displayed: a control the running firmware does not implement must not
      * appear as a switch that silently does nothing.
      */
     const val EV_HRF_INFO = 0x8D
+
+    /** CLKIN status was supported but its USB query failed. */
+    const val HRF_INFO_QUERY_FAILED_CLKIN = 1
+    /** Opera Cake enumeration was supported but its USB query failed. */
+    const val HRF_INFO_QUERY_FAILED_OPERACAKE_BOARDS = 1 shl 1
+    /** CPLD checksum was supported but its USB query failed. */
+    const val HRF_INFO_QUERY_FAILED_CPLD_CHECKSUM = 1 shl 2
+    /** An attached Opera Cake board did not answer its mode query. */
+    const val HRF_INFO_QUERY_FAILED_OPERACAKE_MODE = 1 shl 3
+    /** The firmware-version USB query failed. */
+    const val HRF_INFO_QUERY_FAILED_FIRMWARE = 1 shl 4
+    /** The board-id USB query failed. */
+    const val HRF_INFO_QUERY_FAILED_BOARD_ID = 1 shl 5
+    /** The part-id/serial USB query failed or returned malformed data. */
+    const val HRF_INFO_QUERY_FAILED_SERIAL = 1 shl 6
+    /** Firmware supported board revision, but its USB query failed. */
+    const val HRF_INFO_QUERY_FAILED_BOARD_REVISION = 1 shl 7
+    /** Firmware supported platform identity, but its USB query failed. */
+    const val HRF_INFO_QUERY_FAILED_PLATFORM = 1 shl 8
 
     /**
      * M0 SGPIO loop state: i32 × 11 in struct order (requestedMode,
@@ -638,6 +726,13 @@ object DriverProto {
      * never a valid representation of rejection or lack of support.
      */
     const val EV_COMMAND_RESULT = 0x98
+
+    /**
+     * Exact RTL tuner metadata: i32 tunerType, str tunerName,
+     * u8 gainTableKnown, i32 n, then n*i32 gain values in tenths of a dB.
+     */
+    const val EV_RTL_INFO = 0x99
+    const val RTL_INFO_MAX_GAIN_STEPS = 256
 
     const val COMMAND_ACCEPTED = 0
     const val COMMAND_UNSUPPORTED = 1

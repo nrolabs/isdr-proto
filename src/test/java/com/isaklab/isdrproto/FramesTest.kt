@@ -101,6 +101,29 @@ class FramesTest {
         assertEquals(0, f.payload.remaining())
     }
 
+    @Test fun rejectedCatResultsCarryTerminalRequestedAndActualState() {
+        val sink = ByteArrayOutputStream()
+        val w = writer(sink)
+        w.writeCatModeResult(requested = 6, actual = 1, applied = false)
+        w.writeCatControlResult(id = 12, requested = 3_200, applied = false, superseded = false)
+
+        val r = reader(sink.toByteArray())
+        val mode = r.read()!!
+        assertEquals(DriverProto.EV_CAT_MODE_RESULT, mode.op)
+        assertEquals(6, mode.payload.int)
+        assertEquals(1, mode.payload.int)
+        assertFalse(mode.payload.getBool())
+        assertEquals(0, mode.payload.remaining())
+
+        val control = r.read()!!
+        assertEquals(DriverProto.EV_CAT_CONTROL_RESULT, control.op)
+        assertEquals(12, control.payload.int)
+        assertEquals(3_200, control.payload.int)
+        assertFalse(control.payload.getBool())
+        assertFalse(control.payload.getBool())
+        assertEquals(0, control.payload.remaining())
+    }
+
     @Test fun booleanReaderRejectsNonCanonicalWireValues() {
         assertFalse(java.nio.ByteBuffer.wrap(byteArrayOf(0)).getBool())
         assertTrue(java.nio.ByteBuffer.wrap(byteArrayOf(1)).getBool())
@@ -146,13 +169,68 @@ class FramesTest {
     @Test fun openRoundTrip() {
         val sink = ByteArrayOutputStream()
         writer(sink).writeOpen(
-            DriverProto.DEV_HL2, "192.168.1.77", 1024, DriverProto.OPEN_FLAG_CLASSIC_BOARD,
+            DriverProto.DEV_HPSDR_P1,
+            "192.168.1.77",
+            1024,
+            DriverProto.OPEN_FLAG_CLASSIC_BOARD,
         )
         val f = reader(sink.toByteArray()).read()!!
-        assertEquals(DriverProto.DEV_HL2, f.payload.get().toInt())
+        assertEquals(DriverProto.DEV_HPSDR_P1, f.payload.get().toInt())
         assertEquals("192.168.1.77", f.payload.getUtf())
         assertEquals(1024, f.payload.int)
         assertEquals(DriverProto.OPEN_FLAG_CLASSIC_BOARD, f.payload.int)
+    }
+
+    @Test fun classicAnanProfileFlagsMatchTheCrossPlatformContract() {
+        assertEquals(8, DriverProto.FEAT_HPSDR_EXACT_PROFILE)
+        val exact = listOf(
+            DriverProto.OPEN_HPSDR_CHASSIS_ANAN10,
+            DriverProto.OPEN_HPSDR_CHASSIS_ANAN100,
+            DriverProto.OPEN_HPSDR_CHASSIS_ANAN10E,
+            DriverProto.OPEN_HPSDR_CHASSIS_ANAN100B,
+            DriverProto.OPEN_HPSDR_CHASSIS_ANAN100D,
+            DriverProto.OPEN_HPSDR_CHASSIS_ANAN200D,
+            DriverProto.OPEN_HPSDR_CHASSIS_ANAN7000,
+            DriverProto.OPEN_HPSDR_CHASSIS_ANAN8000,
+        ).map(DriverProto::hpsdrClassicOpenFlags)
+        assertEquals(listOf(3, 5, 7, 9, 11, 13, 15, 17), exact)
+        exact.forEachIndexed { index, flags ->
+            assertEquals(DriverProto.OPEN_FLAG_CLASSIC_BOARD, flags and 1)
+            assertEquals(index + 1, DriverProto.hpsdrChassisProfile(flags))
+        }
+        assertEquals(0, DriverProto.hpsdrChassisProfile(DriverProto.OPEN_FLAG_CLASSIC_BOARD))
+        assertFalse(DriverProto.isExactHpsdrP1OpenFlags(DriverProto.OPEN_FLAG_CLASSIC_BOARD))
+        assertTrue(DriverProto.isExactHpsdrP1OpenFlags(0))
+        assertTrue(exact.all(DriverProto::isExactHpsdrP1OpenFlags))
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun typedDiversityWireConstantsAreStableAndDistinctFromStreams() {
+        assertEquals(3, DriverProto.DEV_HPSDR_P1)
+        assertEquals(DriverProto.DEV_HPSDR_P1, DriverProto.DEV_HL2)
+        assertEquals(1024, DriverProto.FEAT_RX_ADC_ROUTING)
+        assertEquals(0x2D, DriverProto.CMD_SET_DIVERSITY)
+        assertTrue(DriverProto.FEAT_RX_ADC_ROUTING != DriverProto.FEAT_RX_STREAMS)
+        assertTrue(DriverProto.CMD_SET_DIVERSITY != DriverProto.CMD_SET_RX_STREAM_MASK)
+    }
+
+    @Test fun hackRfInfoQueryFailureBitsMatchTheCrossPlatformContract() {
+        assertEquals(1, DriverProto.HRF_INFO_QUERY_FAILED_CLKIN)
+        assertEquals(2, DriverProto.HRF_INFO_QUERY_FAILED_OPERACAKE_BOARDS)
+        assertEquals(4, DriverProto.HRF_INFO_QUERY_FAILED_CPLD_CHECKSUM)
+        assertEquals(8, DriverProto.HRF_INFO_QUERY_FAILED_OPERACAKE_MODE)
+        assertEquals(16, DriverProto.HRF_INFO_QUERY_FAILED_FIRMWARE)
+        assertEquals(32, DriverProto.HRF_INFO_QUERY_FAILED_BOARD_ID)
+        assertEquals(64, DriverProto.HRF_INFO_QUERY_FAILED_SERIAL)
+        assertEquals(128, DriverProto.HRF_INFO_QUERY_FAILED_BOARD_REVISION)
+        assertEquals(256, DriverProto.HRF_INFO_QUERY_FAILED_PLATFORM)
+    }
+
+    @Test fun rtlGainMetadataWireIdsAreStable() {
+        assertEquals(2048, DriverProto.FEAT_RTL_GAIN_TABLE)
+        assertEquals(0x54, DriverProto.CMD_RTL_QUERY_INFO)
+        assertEquals(0x99, DriverProto.EV_RTL_INFO)
+        assertEquals(256, DriverProto.RTL_INFO_MAX_GAIN_STEPS)
     }
 
     @Test fun sweepBlockRoundTrip() {

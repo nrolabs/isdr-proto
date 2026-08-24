@@ -197,6 +197,27 @@ class Frames(
         write(DriverProto.EV_COMMAND_RESULT, bb)
     }
 
+    /** Terminal result of one app-originated CAT receive-control write. */
+    fun writeCatControlResult(id: Int, requested: Int, applied: Boolean, superseded: Boolean) {
+        val bb = ByteBuffer.allocate(10)
+        bb.putInt(id)
+        bb.putInt(requested)
+        bb.put(if (applied) 1.toByte() else 0.toByte())
+        bb.put(if (superseded) 1.toByte() else 0.toByte())
+        bb.flip()
+        write(DriverProto.EV_CAT_CONTROL_RESULT, bb)
+    }
+
+    /** Terminal result of one app-originated CAT operating-mode write. */
+    fun writeCatModeResult(requested: Int, actual: Int, applied: Boolean) {
+        val bb = ByteBuffer.allocate(9)
+        bb.putInt(requested)
+        bb.putInt(actual)
+        bb.put(if (applied) 1.toByte() else 0.toByte())
+        bb.flip()
+        write(DriverProto.EV_CAT_MODE_RESULT, bb)
+    }
+
     /** EV_SWEEP_BLOCK: frequency-tagged IQ block. */
     fun writeSweepBlock(lowerEdgeHz: Long, iq: FloatArray) {
         synchronized(writeLock) {
