@@ -175,7 +175,7 @@ class Frames(
         }
     }
 
-    /** Exact V2 EV_HELLO: version followed by the mandatory feature word. */
+    /** Exact V3 EV_HELLO: version followed by the mandatory feature word. */
     fun writeHello(version: Int, features: Int) {
         val bb = ByteBuffer.allocate(8)
         bb.putInt(version)

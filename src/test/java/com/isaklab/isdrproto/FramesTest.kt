@@ -74,7 +74,7 @@ class FramesTest {
         assertArrayEquals(iq, f.payload.getFloats(), 0f)
     }
 
-    @Test fun v2HelloCarriesTheMandatoryFeatureWord() {
+    @Test fun v3HelloCarriesTheMandatoryFeatureWord() {
         val sink = ByteArrayOutputStream()
         writer(sink).writeHello(DriverProto.VERSION, DriverProto.FEAT_RX_STREAMS)
 
@@ -98,6 +98,24 @@ class FramesTest {
         assertEquals(DriverProto.CMD_SET_PTT, f.payload.get().toInt() and 0xFF)
         assertEquals(DriverProto.COMMAND_REJECTED, f.payload.get().toInt() and 0xFF)
         assertEquals("PTT was not confirmed", f.payload.getUtf())
+        assertEquals(0, f.payload.remaining())
+    }
+
+    @Test fun v3SupersededDispositionKeepsTheExistingResultShape() {
+        assertEquals(3, DriverProto.VERSION)
+        assertEquals(5, DriverProto.COMMAND_SUPERSEDED)
+        val sink = ByteArrayOutputStream()
+        writer(sink).writeCommandResult(
+            DriverProto.CMD_SET_FREQUENCY,
+            DriverProto.COMMAND_SUPERSEDED,
+            "replaced by the next queued tune",
+        )
+
+        val f = reader(sink.toByteArray()).read()!!
+        assertEquals(DriverProto.EV_COMMAND_RESULT, f.op)
+        assertEquals(DriverProto.CMD_SET_FREQUENCY, f.payload.get().toInt() and 0xFF)
+        assertEquals(DriverProto.COMMAND_SUPERSEDED, f.payload.get().toInt() and 0xFF)
+        assertEquals("replaced by the next queued tune", f.payload.getUtf())
         assertEquals(0, f.payload.remaining())
     }
 

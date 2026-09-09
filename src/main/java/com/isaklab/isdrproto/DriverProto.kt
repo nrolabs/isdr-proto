@@ -23,10 +23,10 @@ package com.isaklab.isdrproto
  */
 object DriverProto {
     /** Bump on ANY wire-visible change; both sides refuse a mismatch. */
-    const val VERSION = 2
+    const val VERSION = 3
 
     // ---- host feature bits (mandatory EV_HELLO second i32) ----
-    // Additive capabilities are gated by these bits. Protocol V2 requires
+    // Additive capabilities are gated by these bits. Protocol V3 requires
     // the complete version + features greeting and rejects legacy shapes.
     /** Host can stream per-receiver IQ (CMD_SET_RX_STREAM_MASK / EV_DATA_RX). */
     const val FEAT_RX_STREAMS = 1
@@ -739,6 +739,8 @@ object DriverProto {
     const val COMMAND_REJECTED = 2
     const val COMMAND_NO_RADIO = 3
     const val COMMAND_MALFORMED = 4
+    /** An older request was replaced by the next pending request of the same opcode. */
+    const val COMMAND_SUPERSEDED = 5
 }
 
 /**
