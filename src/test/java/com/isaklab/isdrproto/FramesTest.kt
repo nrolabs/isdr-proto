@@ -222,6 +222,41 @@ class FramesTest {
         assertTrue(exact.all(DriverProto::isExactHpsdrP1OpenFlags))
     }
 
+    @Test fun catProfileFlagsAreAppendOnlyExactAndByteStable() {
+        assertEquals(8192, DriverProto.FEAT_CAT_EXACT_PROFILE)
+        val cases = listOf(
+            Triple(DriverProto.CAT_DIALECT_CIV, 0x44, DriverProto.CAT_PROFILE_GENERIC) to 0x0044,
+            Triple(DriverProto.CAT_DIALECT_KENWOOD, 0, DriverProto.CAT_PROFILE_GENERIC) to 0x0100,
+            Triple(DriverProto.CAT_DIALECT_CIV, 0x94, DriverProto.CAT_PROFILE_IC7300) to 0x1094,
+            Triple(DriverProto.CAT_DIALECT_CIV, 0xA4, DriverProto.CAT_PROFILE_IC705) to 0x20A4,
+            Triple(DriverProto.CAT_DIALECT_CIV, 0x98, DriverProto.CAT_PROFILE_IC7610) to 0x3098,
+            Triple(DriverProto.CAT_DIALECT_CIV, 0xA2, DriverProto.CAT_PROFILE_IC9700) to 0x40A2,
+            Triple(DriverProto.CAT_DIALECT_CIV, 0xAC, DriverProto.CAT_PROFILE_IC905) to 0x50AC,
+            Triple(DriverProto.CAT_DIALECT_CIV, 0x96, DriverProto.CAT_PROFILE_ICR8600) to 0x6096,
+            Triple(DriverProto.CAT_DIALECT_CIV, 0x8E, DriverProto.CAT_PROFILE_IC7851) to 0x708E,
+            Triple(DriverProto.CAT_DIALECT_KENWOOD, 0, DriverProto.CAT_PROFILE_TS890) to 0x8100,
+            Triple(DriverProto.CAT_DIALECT_KENWOOD, 0, DriverProto.CAT_PROFILE_TS990) to 0x9100,
+        )
+        for ((parts, expected) in cases) {
+            val flags = DriverProto.catOpenFlags(parts.first, parts.second, parts.third)
+            assertEquals(expected, flags)
+            assertEquals(parts.first, DriverProto.catDialect(flags))
+            assertEquals(parts.third, DriverProto.catProfile(flags))
+            assertTrue(DriverProto.isValidCatOpenFlags(flags))
+        }
+    }
+
+    @Test fun catProfileFlagsRejectUnknownBitsAndIdentityMismatches() {
+        assertFalse(DriverProto.isValidCatOpenFlags(0x1_0000))
+        assertFalse(DriverProto.isValidCatOpenFlags(0xA000))
+        assertFalse(DriverProto.isValidCatOpenFlags(0x0200))
+        assertFalse(DriverProto.isValidCatOpenFlags(0x1194))
+        assertFalse(DriverProto.isValidCatOpenFlags(0x10A4))
+        assertFalse(DriverProto.isValidCatOpenFlags(0x8000))
+        assertFalse(DriverProto.isValidCatOpenFlags(0x8101))
+        assertTrue(DriverProto.isValidCatOpenFlags(0))
+    }
+
     @Suppress("DEPRECATION")
     @Test fun typedDiversityWireConstantsAreStableAndDistinctFromStreams() {
         assertEquals(3, DriverProto.DEV_HPSDR_P1)

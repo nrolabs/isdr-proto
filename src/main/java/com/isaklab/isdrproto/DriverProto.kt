@@ -113,6 +113,14 @@ object DriverProto {
     /** Host implements the atomic, profile-gated CAT repeater transaction. */
     const val FEAT_CAT_REPEATER = 4096
 
+    /**
+     * Host validates the exact expected CAT product encoded in CMD_OPEN and
+     * refuses a physical identity mismatch before exposing controls or TX.
+     * Generic/unknown CAT opens remain compatible with hosts lacking this bit
+     * because they make no product-identity claim.
+     */
+    const val FEAT_CAT_EXACT_PROFILE = 8192
+
     // Atomic CAT repeater payload. These names intentionally mirror the
     // Rust wire constants; ergonomic aliases live in CatRepeater.
     const val CAT_REPEATER_PAYLOAD_LEN = 21
@@ -258,8 +266,8 @@ object DriverProto {
      * CAT rig (control protocol, no IQ plane): the driver picks the dialect —
      * CI-V today; Yaesu/Kenwood/Flex are future dialects behind the same kind.
      * Open payload: host = serial device path or TCP-bridge host, port = baud
-     * when serial (0 = 115200) else TCP port, flags low byte = bus address
-     * (0 = probe).
+     * when serial (0 = 115200) else TCP port. See the append-only CAT flags
+     * layout below for bus address, dialect and expected product identity.
      */
     const val DEV_CAT = 6
 
@@ -318,13 +326,101 @@ object DriverProto {
     // ---- DEV_CAT open-flags layout ----
     // Low byte: dialect-specific station address (CI-V bus address; 0 = probe).
     // Bits 8..11: the CAT dialect the driver must speak.
+    // Bits 12..15: exact expected product; zero deliberately means unknown.
+    // Bits 16..31 remain reserved and must be zero.
+    const val CAT_ADDRESS_MASK = 0xFF
     const val CAT_DIALECT_SHIFT = 8
     const val CAT_DIALECT_MASK = 0xF shl CAT_DIALECT_SHIFT
     const val CAT_DIALECT_CIV = 0
     const val CAT_DIALECT_KENWOOD = 1
 
+    const val CAT_PROFILE_SHIFT = 12
+    const val CAT_PROFILE_MASK = 0xF shl CAT_PROFILE_SHIFT
+    const val CAT_PROFILE_GENERIC = 0
+    const val CAT_PROFILE_IC7300 = 1
+    const val CAT_PROFILE_IC705 = 2
+    const val CAT_PROFILE_IC7610 = 3
+    const val CAT_PROFILE_IC9700 = 4
+    const val CAT_PROFILE_IC905 = 5
+    const val CAT_PROFILE_ICR8600 = 6
+    const val CAT_PROFILE_IC7851 = 7
+    const val CAT_PROFILE_TS890 = 8
+    const val CAT_PROFILE_TS990 = 9
+    const val CAT_KNOWN_FLAGS = CAT_ADDRESS_MASK or CAT_DIALECT_MASK or CAT_PROFILE_MASK
+
     /** The dialect carried in a DEV_CAT open's flags word. */
     fun catDialect(flags: Int): Int = (flags and CAT_DIALECT_MASK) shr CAT_DIALECT_SHIFT
+
+    /** The exact expected product, or [CAT_PROFILE_GENERIC] for no identity claim. */
+    fun catProfile(flags: Int): Int = (flags and CAT_PROFILE_MASK) shr CAT_PROFILE_SHIFT
+
+    fun isKnownCatDialect(dialect: Int): Boolean =
+        dialect == CAT_DIALECT_CIV || dialect == CAT_DIALECT_KENWOOD
+
+    fun isKnownCatProfile(profile: Int): Boolean =
+        profile in CAT_PROFILE_GENERIC..CAT_PROFILE_TS990
+
+    /** Required dialect for an exact product; null means generic/unknown. */
+    fun catProfileDialect(profile: Int): Int? = when (profile) {
+        CAT_PROFILE_GENERIC -> null
+        CAT_PROFILE_IC7300,
+        CAT_PROFILE_IC705,
+        CAT_PROFILE_IC7610,
+        CAT_PROFILE_IC9700,
+        CAT_PROFILE_IC905,
+        CAT_PROFILE_ICR8600,
+        CAT_PROFILE_IC7851,
+        -> CAT_DIALECT_CIV
+        CAT_PROFILE_TS890, CAT_PROFILE_TS990 -> CAT_DIALECT_KENWOOD
+        else -> null
+    }
+
+    /** Factory CI-V address bound to an exact Icom profile; null otherwise. */
+    fun catProfileCivAddress(profile: Int): Int? = when (profile) {
+        CAT_PROFILE_IC7300 -> 0x94
+        CAT_PROFILE_IC705 -> 0xA4
+        CAT_PROFILE_IC7610 -> 0x98
+        CAT_PROFILE_IC9700 -> 0xA2
+        CAT_PROFILE_IC905 -> 0xAC
+        CAT_PROFILE_ICR8600 -> 0x96
+        CAT_PROFILE_IC7851 -> 0x8E
+        else -> null
+    }
+
+    /**
+     * Validate the complete CAT word before it reaches a host. Exact profiles
+     * bind dialect and address; generic CI-V may probe/select an address and
+     * generic Kenwood has no CI-V address byte.
+     */
+    fun isValidCatOpenFlags(flags: Int): Boolean {
+        if (flags and CAT_KNOWN_FLAGS.inv() != 0) return false
+        val dialect = catDialect(flags)
+        val profile = catProfile(flags)
+        val address = flags and CAT_ADDRESS_MASK
+        if (!isKnownCatDialect(dialect) || !isKnownCatProfile(profile)) return false
+        if (profile == CAT_PROFILE_GENERIC) {
+            return dialect != CAT_DIALECT_KENWOOD || address == 0
+        }
+        if (catProfileDialect(profile) != dialect) return false
+        return when (dialect) {
+            CAT_DIALECT_CIV -> catProfileCivAddress(profile) == address
+            CAT_DIALECT_KENWOOD -> address == 0
+            else -> false
+        }
+    }
+
+    /** Build one fully validated, append-only DEV_CAT CMD_OPEN flags word. */
+    fun catOpenFlags(dialect: Int, address: Int, profile: Int): Int {
+        require(isKnownCatDialect(dialect)) { "unknown CAT dialect $dialect" }
+        require(address in 0..CAT_ADDRESS_MASK) { "CI-V address is outside one byte" }
+        require(isKnownCatProfile(profile)) { "unknown CAT profile $profile" }
+        val flags = address or (dialect shl CAT_DIALECT_SHIFT) or
+            (profile shl CAT_PROFILE_SHIFT)
+        require(isValidCatOpenFlags(flags)) {
+            "CAT profile $profile does not match dialect $dialect/address 0x${address.toString(16)}"
+        }
+        return flags
+    }
 
     // ---- commands (app -> driver host) ----
     const val CMD_HELLO = 0x01                 // i32 protocol version
