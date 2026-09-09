@@ -151,3 +151,127 @@ object StreamCounters {
     const val ERROR_TX_TIMEOUT = 2
     const val ERROR_MISSED_DEADLINE = 3
 }
+
+/** Canonical values and exact ladders for [CatRepeaterConfig]. */
+object CatRepeater {
+    const val PAYLOAD_LEN = DriverProto.CAT_REPEATER_PAYLOAD_LEN
+
+    const val DUPLEX_SIMPLEX = DriverProto.CAT_DUPLEX_SIMPLEX
+    const val DUPLEX_MINUS = DriverProto.CAT_DUPLEX_MINUS
+    const val DUPLEX_PLUS = DriverProto.CAT_DUPLEX_PLUS
+
+    const val TONE_OFF = DriverProto.CAT_TONE_OFF
+    /** Tone value is in tenths of a hertz (885 = 88.5 Hz). */
+    const val TONE_CTCSS = DriverProto.CAT_TONE_CTCSS
+    /** Tone value is the printed three-digit code (023 is integer 23). */
+    const val TONE_DCS = DriverProto.CAT_TONE_DCS
+
+    const val DCS_NORMAL = DriverProto.CAT_DCS_NORMAL
+    const val DCS_INVERTED = DriverProto.CAT_DCS_INVERTED
+
+    const val MAX_OFFSET_HZ = DriverProto.CAT_REPEATER_MAX_OFFSET_HZ
+
+    const val CAP_DUPLEX = DriverProto.CAT_REPEATER_CAP_DUPLEX
+    const val CAP_OFFSET = DriverProto.CAT_REPEATER_CAP_OFFSET
+    const val CAP_CTCSS_TX = DriverProto.CAT_REPEATER_CAP_CTCSS_TX
+    const val CAP_CTCSS_RX = DriverProto.CAT_REPEATER_CAP_CTCSS_RX
+    const val CAP_DCS_TX = DriverProto.CAT_REPEATER_CAP_DCS_TX
+    const val CAP_DCS_RX = DriverProto.CAT_REPEATER_CAP_DCS_RX
+    const val CAP_DCS_POLARITY = DriverProto.CAT_REPEATER_CAP_DCS_POLARITY
+    const val CAP_CROSS_TONE = DriverProto.CAT_REPEATER_CAP_CROSS_TONE
+
+    val CTCSS_TONES_TENTHS_HZ = intArrayOf(
+        600, 670, 693, 719, 744, 770, 797, 825, 854, 885, 915,
+        948, 974, 1000, 1035, 1072, 1109, 1148, 1188, 1200, 1230, 1273,
+        1318, 1365, 1413, 1462, 1514, 1567, 1598, 1622, 1655, 1679,
+        1713, 1738, 1773, 1799, 1835, 1862, 1899, 1928, 1966, 1995,
+        2035, 2065, 2107, 2181, 2257, 2291, 2336, 2418, 2503, 2541,
+    )
+
+    val DCS_CODES = intArrayOf(
+        23, 25, 26, 31, 32, 36, 43, 47, 51, 53, 54, 65, 71, 72, 73, 74,
+        114, 115, 116, 122, 125, 131, 132, 134, 143, 145, 152, 155, 156,
+        162, 165, 172, 174, 205, 212, 223, 225, 226, 243, 244, 245, 246,
+        251, 252, 255, 261, 263, 265, 266, 271, 274, 306, 311, 315, 325,
+        331, 332, 343, 346, 351, 356, 364, 365, 371, 411, 412, 413, 423,
+        431, 432, 445, 446, 452, 454, 455, 462, 464, 465, 466, 503, 506,
+        516, 523, 526, 532, 546, 565, 606, 612, 624, 627, 631, 632, 654,
+        662, 664, 703, 712, 723, 731, 732, 734, 743, 754,
+    )
+
+    internal fun validationError(c: CatRepeaterConfig): String? {
+        if (c.duplex !in DUPLEX_SIMPLEX..DUPLEX_PLUS) return "unknown CAT duplex value"
+        if (c.offsetHz !in 0..MAX_OFFSET_HZ || c.offsetHz % 100L != 0L) {
+            return "CAT repeater offset is outside the 100 Hz wire ladder"
+        }
+        if (c.duplex == DUPLEX_SIMPLEX && c.offsetHz != 0L) {
+            return "simplex CAT repeater state must have zero offset"
+        }
+        if (c.duplex != DUPLEX_SIMPLEX && c.offsetHz == 0L) {
+            return "duplex CAT repeater state requires a positive offset"
+        }
+        return toneError(c.txKind, c.txValue, c.txPolarity)
+            ?: toneError(c.rxKind, c.rxValue, c.rxPolarity)
+    }
+
+    private fun toneError(kind: Int, value: Int, polarity: Int): String? = when (kind) {
+        TONE_OFF -> if (value == 0 && polarity == DCS_NORMAL) null
+            else "disabled CAT tone must have zero value and normal polarity"
+        TONE_CTCSS -> if (value in CTCSS_TONES_TENTHS_HZ && polarity == DCS_NORMAL) null
+            else "CAT CTCSS value is not on the canonical tone ladder"
+        TONE_DCS -> if (value in DCS_CODES && polarity in DCS_NORMAL..DCS_INVERTED) null
+            else "CAT DCS code or polarity is invalid"
+        else -> "unknown CAT tone kind"
+    }
+}
+
+/**
+ * Complete operator intent for one atomic CAT repeater transaction.
+ *
+ * The wire representation is exactly 21 bytes, big-endian. Encoding invalid
+ * state throws instead of substituting a nearby tone or silently clearing a
+ * field; decoding rejects trailing bytes as well as truncated payloads.
+ */
+data class CatRepeaterConfig(
+    val duplex: Int,
+    val offsetHz: Long,
+    val txKind: Int,
+    val txValue: Int,
+    val txPolarity: Int,
+    val rxKind: Int,
+    val rxValue: Int,
+    val rxPolarity: Int,
+) {
+    fun encode(): ByteArray {
+        CatRepeater.validationError(this)?.let { throw IllegalArgumentException(it) }
+        return java.nio.ByteBuffer.allocate(CatRepeater.PAYLOAD_LEN)
+            .order(java.nio.ByteOrder.BIG_ENDIAN)
+            .put(duplex.toByte())
+            .putLong(offsetHz)
+            .put(txKind.toByte())
+            .putInt(txValue)
+            .put(txPolarity.toByte())
+            .put(rxKind.toByte())
+            .putInt(rxValue)
+            .put(rxPolarity.toByte())
+            .array()
+    }
+
+    companion object {
+        fun decode(payload: ByteArray): CatRepeaterConfig? {
+            if (payload.size != CatRepeater.PAYLOAD_LEN) return null
+            val b = java.nio.ByteBuffer.wrap(payload).order(java.nio.ByteOrder.BIG_ENDIAN)
+            val config = CatRepeaterConfig(
+                duplex = b.get().toInt() and 0xFF,
+                offsetHz = b.long,
+                txKind = b.get().toInt() and 0xFF,
+                txValue = b.int,
+                txPolarity = b.get().toInt() and 0xFF,
+                rxKind = b.get().toInt() and 0xFF,
+                rxValue = b.int,
+                rxPolarity = b.get().toInt() and 0xFF,
+            )
+            return config.takeIf { CatRepeater.validationError(it) == null }
+        }
+    }
+}

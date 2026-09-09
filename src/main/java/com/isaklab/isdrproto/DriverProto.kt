@@ -22,7 +22,10 @@ package com.isaklab.isdrproto
  * when introducing optional capabilities like `FEAT_NARROWBAND` or `FEAT_SHM_RING`.
  */
 object DriverProto {
-    /** Bump on ANY wire-visible change; both sides refuse a mismatch. */
+    /**
+     * Bump on an incompatible wire-shape or semantic change. Optional new
+     * opcodes stay additive only when guarded by a new FEAT_* bit.
+     */
     const val VERSION = 3
 
     // ---- host feature bits (mandatory EV_HELLO second i32) ----
@@ -106,6 +109,30 @@ object DriverProto {
 
     /** Host reports exact RTL tuner identity and discrete gain table. */
     const val FEAT_RTL_GAIN_TABLE = 2048
+
+    /** Host implements the atomic, profile-gated CAT repeater transaction. */
+    const val FEAT_CAT_REPEATER = 4096
+
+    // Atomic CAT repeater payload. These names intentionally mirror the
+    // Rust wire constants; ergonomic aliases live in CatRepeater.
+    const val CAT_REPEATER_PAYLOAD_LEN = 21
+    const val CAT_DUPLEX_SIMPLEX = 0
+    const val CAT_DUPLEX_MINUS = 1
+    const val CAT_DUPLEX_PLUS = 2
+    const val CAT_TONE_OFF = 0
+    const val CAT_TONE_CTCSS = 1
+    const val CAT_TONE_DCS = 2
+    const val CAT_DCS_NORMAL = 0
+    const val CAT_DCS_INVERTED = 1
+    const val CAT_REPEATER_MAX_OFFSET_HZ = 299_999_000L
+    const val CAT_REPEATER_CAP_DUPLEX = 1
+    const val CAT_REPEATER_CAP_OFFSET = 1 shl 1
+    const val CAT_REPEATER_CAP_CTCSS_TX = 1 shl 2
+    const val CAT_REPEATER_CAP_CTCSS_RX = 1 shl 3
+    const val CAT_REPEATER_CAP_DCS_TX = 1 shl 4
+    const val CAT_REPEATER_CAP_DCS_RX = 1 shl 5
+    const val CAT_REPEATER_CAP_DCS_POLARITY = 1 shl 6
+    const val CAT_REPEATER_CAP_CROSS_TONE = 1 shl 7
 
     // ---- IQ wire format ----
     //
@@ -615,6 +642,13 @@ object DriverProto {
      * ignores ids its rig does not have (the UI hides those by capability).
      */
     const val CMD_CAT_SET_CONTROL = 0x69
+
+    /**
+     * Atomic CAT repeater configuration. The exact 21-byte payload is
+     * encoded/decoded by [CatRepeaterConfig]. ACCEPTED is terminal only
+     * after exact hardware readback; partial writes are rejected.
+     */
+    const val CMD_CAT_SET_REPEATER = 0x6A
 
     // ---- CAT rig control ids (CMD_CAT_SET_CONTROL) ----
     const val CATCTL_FIL = 1
