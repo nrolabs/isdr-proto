@@ -223,7 +223,8 @@ class FramesTest {
     }
 
     @Test fun catProfileFlagsAreAppendOnlyExactAndByteStable() {
-        assertEquals(8192, DriverProto.FEAT_CAT_EXACT_PROFILE)
+        assertEquals(8192, DriverProto.FEAT_CAT_PROFILE_GUARD)
+        assertEquals(DriverProto.FEAT_CAT_PROFILE_GUARD, DriverProto.FEAT_CAT_EXACT_PROFILE)
         val cases = listOf(
             Triple(DriverProto.CAT_DIALECT_CIV, 0x44, DriverProto.CAT_PROFILE_GENERIC) to 0x0044,
             Triple(DriverProto.CAT_DIALECT_KENWOOD, 0, DriverProto.CAT_PROFILE_GENERIC) to 0x0100,

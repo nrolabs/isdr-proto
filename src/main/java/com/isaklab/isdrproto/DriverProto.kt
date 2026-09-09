@@ -114,12 +114,16 @@ object DriverProto {
     const val FEAT_CAT_REPEATER = 4096
 
     /**
-     * Host validates the exact expected CAT product encoded in CMD_OPEN and
-     * refuses a physical identity mismatch before exposing controls or TX.
-     * Generic/unknown CAT opens remain compatible with hosts lacking this bit
-     * because they make no product-identity claim.
+     * Host enforces the CAT profile guard encoded in CMD_OPEN before exposing
+     * controls or TX. Kenwood's ID names a model; Icom's 0x19/0x00 evidence is
+     * only its operator-configurable CI-V address, so the Icom product profile
+     * remains an explicit operator selection rather than an immutable SKU
+     * detection. Generic/unknown CAT opens make no profile claim.
      */
-    const val FEAT_CAT_EXACT_PROFILE = 8192
+    const val FEAT_CAT_PROFILE_GUARD = 8192
+
+    /** Source-compatible name retained for peers built against the first draft. */
+    const val FEAT_CAT_EXACT_PROFILE = FEAT_CAT_PROFILE_GUARD
 
     // Atomic CAT repeater payload. These names intentionally mirror the
     // Rust wire constants; ergonomic aliases live in CatRepeater.
@@ -326,7 +330,7 @@ object DriverProto {
     // ---- DEV_CAT open-flags layout ----
     // Low byte: dialect-specific station address (CI-V bus address; 0 = probe).
     // Bits 8..11: the CAT dialect the driver must speak.
-    // Bits 12..15: exact expected product; zero deliberately means unknown.
+    // Bits 12..15: operator-selected control profile; zero means unknown.
     // Bits 16..31 remain reserved and must be zero.
     const val CAT_ADDRESS_MASK = 0xFF
     const val CAT_DIALECT_SHIFT = 8
@@ -351,7 +355,7 @@ object DriverProto {
     /** The dialect carried in a DEV_CAT open's flags word. */
     fun catDialect(flags: Int): Int = (flags and CAT_DIALECT_MASK) shr CAT_DIALECT_SHIFT
 
-    /** The exact expected product, or [CAT_PROFILE_GENERIC] for no identity claim. */
+    /** The selected control profile, or [CAT_PROFILE_GENERIC] for no claim. */
     fun catProfile(flags: Int): Int = (flags and CAT_PROFILE_MASK) shr CAT_PROFILE_SHIFT
 
     fun isKnownCatDialect(dialect: Int): Boolean =
