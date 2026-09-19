@@ -858,6 +858,10 @@ object DriverProto {
      * Terminal disposition of one control-plane command: u8 original opcode,
      * u8 disposition ([COMMAND_ACCEPTED] etc.), UTF diagnostic. Silence is
      * never a valid representation of rejection or lack of support.
+     * In V3 the correlated result precedes its authoritative typed readback
+     * on the same TCP stream. Clients use that FIFO position as the causal
+     * barrier; an older buffered state cannot confirm a later command.
+     * This ordering does not change the version, feature bits or payload.
      */
     const val EV_COMMAND_RESULT = 0x98
 
