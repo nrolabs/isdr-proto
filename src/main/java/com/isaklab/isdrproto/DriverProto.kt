@@ -26,7 +26,7 @@ object DriverProto {
      * Bump on an incompatible wire-shape or semantic change. Optional new
      * opcodes stay additive only when guarded by a new FEAT_* bit.
      */
-    const val VERSION = 3
+    const val VERSION = 4
 
     // ---- host feature bits (mandatory EV_HELLO second i32) ----
     // Additive capabilities are gated by these bits. Protocol V3 requires
@@ -204,15 +204,12 @@ object DriverProto {
     const val SPECTRUM_FORMAT_U8 = 1
 
     /**
-     * THE encodings EV_DATA / EV_DATA_RX use on the wire.
-     *
-     * There is no negotiation, deliberately. Two ends that disagree about a
-     * format cannot detect it — every block is garbled and nothing fails —
-     * and that is exactly what happened when the station assumed float32
-     * while the phone had agreed s16 with the driver behind it. One value,
-     * one meaning, no handshake to get wrong.
+     * Lossless raw IQ for EV_DATA / EV_DATA_RX. Strong neighbours must be
+     * removed before reducing precision, including on the local driver link.
      */
-    const val IQ_WIRE_FORMAT = IQ_FORMAT_BFP8
+    const val IQ_WIRE_FORMAT = IQ_FORMAT_F32
+    /** Only EV_DATA_NARROW, after channelisation; the opcode identifies the format. */
+    const val NARROW_IQ_WIRE_FORMAT = IQ_FORMAT_BFP8
     const val SPECTRUM_WIRE_FORMAT = SPECTRUM_FORMAT_U8
 
     /**
@@ -620,7 +617,7 @@ object DriverProto {
     // waiting for a block that is not coming.
     /**
      * Narrowband window actually in force: i32 widthHz, i64 centerHz,
-     * i32 decimation. Sent whenever it changes, so the client knows which
+     * i32 decimation, i64 epoch. Sent whenever it changes, so the client knows which
      * span it may retune inside without a round trip — guessing would let it
      * tune to a frequency the window does not contain and hear silence.
      */
@@ -870,6 +867,12 @@ object DriverProto {
      * u8 gainTableKnown, i32 n, then n*i32 gain values in tenths of a dB.
      */
     const val EV_RTL_INFO = 0x99
+    /** 24-byte StreamGeometry prefix, then EV_DATA with NARROW_IQ_WIRE_FORMAT and source seq. */
+    const val EV_DATA_NARROW = 0x9A
+    /** Atomic receiver context: i32 active, i32 mask, i32 rate, i32 count, i64 LO[count]. */
+    const val EV_RX_CONTEXT = 0x9B
+    /** 24-byte StreamGeometry prefix, then EV_DATA_RX with NARROW_IQ_WIRE_FORMAT and source seq. */
+    const val EV_DATA_RX_NARROW = 0x9C
     const val RTL_INFO_MAX_GAIN_STEPS = 256
 
     const val COMMAND_ACCEPTED = 0

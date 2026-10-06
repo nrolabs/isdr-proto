@@ -101,8 +101,8 @@ class FramesTest {
         assertEquals(0, f.payload.remaining())
     }
 
-    @Test fun v3SupersededDispositionKeepsTheExistingResultShape() {
-        assertEquals(3, DriverProto.VERSION)
+    @Test fun v4RetainsTheSupersededDispositionResultShape() {
+        assertEquals(4, DriverProto.VERSION)
         assertEquals(5, DriverProto.COMMAND_SUPERSEDED)
         val sink = ByteArrayOutputStream()
         writer(sink).writeCommandResult(

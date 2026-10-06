@@ -45,7 +45,10 @@ class OpcodeUniquenessTest {
 
     /** Feature bits are OR-ed into one word; two features on one bit is one feature. */
     @Test fun featureBitsAreDistinctPowersOfTwo() {
-        val feats = constants("FEAT_")
+        // This spelling is shared with Rust; it is one capability, not a
+        // second allocation. Every actual feature must still own its bit.
+        assertEquals(DriverProto.FEAT_CAT_PROFILE_GUARD, DriverProto.FEAT_CAT_EXACT_PROFILE)
+        val feats = constants("FEAT_").filterKeys { it != "FEAT_CAT_EXACT_PROFILE" }
         feats.forEach { (name, v) ->
             assertTrue("$name = $v is not a single bit", v > 0 && (v and (v - 1)) == 0)
         }

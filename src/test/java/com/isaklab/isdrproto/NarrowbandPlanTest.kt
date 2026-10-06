@@ -218,12 +218,14 @@ class NarrowbandPlanTest {
         assertNotNull(plan)
     }
 
-    @Test fun no_plan_when_no_factor_covers_the_request() {
-        // Wideband FM out of a 384 kSps radio: 250 kHz is more than half the
-        // rate, so nothing can be decimated away. A D=1 plan would announce a
-        // narrowing that did not happen and cost a filter pass for nothing.
-        assertNull(NarrowbandPlan.resolve(384_000, 250_000, 0))
-        // One rung down it becomes possible again.
-        assertNotNull(NarrowbandPlan.resolve(384_000, 180_000, 0))
+    @Test fun a_full_rate_plan_preserves_geometry_when_no_decimation_covers_the_request() {
+        val plan = NarrowbandPlan.resolve(384_000, 250_000, 14_074_000)!!
+        assertEquals(1, plan.decimation)
+        assertEquals(384_000, plan.widthHz)
+        assertEquals(14_074_000L, plan.centerHz)
+        assertEquals(1, NarrowbandPlan.resolve(48_000, 48_000, 0)!!.decimation)
+        assertNull(NarrowbandPlan.resolve(48_000, 48_001, 0))
+        assertNull(NarrowbandPlan.resolve(5_999, 1, 0))
+        assertEquals(2, NarrowbandPlan.resolve(384_000, 180_000, 0)!!.decimation)
     }
 }

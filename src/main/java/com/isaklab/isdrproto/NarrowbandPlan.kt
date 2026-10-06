@@ -19,8 +19,8 @@ import kotlin.math.abs
  * to fractional megabits, transferring only the region of interest while the client 
  * retains local control of demodulation and TX processing. 
  *
- * @param decimation factor applied to the radio's sample rate; one of
- *                   [NarrowbandPlan.DECIMATIONS]
+ * @param decimation factor applied to the radio's sample rate; one for
+ *                   unchanged rate, otherwise one of [NarrowbandPlan.DECIMATIONS]
  * @param widthHz    the delivered sample rate, i.e. the usable span
  * @param centerHz   absolute frequency the window is centred on
  */
@@ -65,22 +65,22 @@ data class NarrowbandPlan(
          * @param sampleRateHz the radio's current rate
          * @param requestedWidthHz desired span; clamped to what is reachable
          * @param centerHz absolute centre for the window
-         * @return the plan, or null when no decimation helps (the radio is
-         *         already narrower than the request)
+         * D=1 retains the hardware rate without running a decimation filter. The
+         * station announces its actual LO as the delivered centre in that case.
+         *
+         * @return the plan, or null when the radio cannot cover the request
          */
         fun resolve(sampleRateHz: Int, requestedWidthHz: Int, centerHz: Long): NarrowbandPlan? {
             if (sampleRateHz <= 0 || requestedWidthHz <= 0) return null
             val target = maxOf(requestedWidthHz, MIN_WIDTH_HZ)
-            if (sampleRateHz <= target) return null   // nothing to gain
+            if (sampleRateHz < target) return null
 
             // Deepest decimation whose output still COVERS the target —
             // overshooting would cut the operator's span, so it is the
             // largest factor that still fits, never the closest one.
-            // No factor covers the request — WFM out of a 384 kSps radio, say.
-            // Returning a D=1 "window" would have the station run a
-            // decimate-by-one filter and announce a narrowing that never
-            // happened; null keeps the full stream and says so honestly.
-            val decim = DECIMATIONS.lastOrNull { sampleRateHz / it >= target } ?: return null
+            // A full-rate BFP8 window still has an explicit geometry. D=1
+            // bypasses DSP; it does not pretend that the rate was reduced.
+            val decim = DECIMATIONS.lastOrNull { sampleRateHz / it >= target } ?: 1
             val width = sampleRateHz / decim
             if (width < MIN_WIDTH_HZ) return null
             return NarrowbandPlan(decim, width, centerHz)
