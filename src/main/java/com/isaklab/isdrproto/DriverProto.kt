@@ -32,6 +32,9 @@ object DriverProto {
     // Additive capabilities are gated by these bits. Protocol V3 requires
     // the complete version + features greeting and rejects legacy shapes.
     /** Host can stream per-receiver IQ (CMD_SET_RX_STREAM_MASK / EV_DATA_RX). */
+    /** Atomic, sequenced CAT scope sweeps. */
+    const val FEAT_SCOPE_DATA = 16384
+
     const val FEAT_RX_STREAMS = 1
 
     /**
@@ -425,6 +428,8 @@ object DriverProto {
 
     // ---- commands (app -> driver host) ----
     const val CMD_HELLO = 0x01                 // i32 protocol version
+    const val EV_SCOPE_DATA = 0x9D             // ScopeData version 1, droppable RX media
+
     const val CMD_AUTH = 0x04                  // str token (LAN sessions only)
     const val CMD_OPEN = 0x02                  // u8 kind, str host, i32 port, i32 flags
     const val CMD_CLOSE = 0x03                 // (empty)
